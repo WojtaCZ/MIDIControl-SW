@@ -3,11 +3,11 @@
 # Date: 30. 7. 2019
 
 name = midicontroll
-src = $(wildcard lib/*.c)
+src = $(wildcard lib/*) #bylo *.c
 obj = $(src:.c=.o)
 
 CC=gcc
-CFLAGS= -std=c99 -lreadline -D_SVID_SOURCE
+CFLAGS= -std=c99 -lreadline -pthread -D_SVID_SOURCE
 
 $(name): src/main.c $(obj)
 		$(CC) -o $@ $^ $(CFLAGS)
