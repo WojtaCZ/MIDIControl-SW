@@ -7,7 +7,7 @@
 #include <stdlib.h>
 
 int serialInit(char port[], char baud[]){
-	int sercom = open(port, O_RDWR | O_NOCTTY);
+	sercom = open(port, O_RDWR | O_NOCTTY);
 	if(sercom < 1){
 		printf(ERROR "Seriovy port %s nelze otevrit!\n", port);
 		return 0;
@@ -17,7 +17,7 @@ int serialInit(char port[], char baud[]){
 
 	if(!serialConfig(sercom, port, baud)) return 0;
 
-	close(sercom);
+	//close(sercom);
 	return 1;
 }
 

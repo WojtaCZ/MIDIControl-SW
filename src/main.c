@@ -19,7 +19,7 @@ int main(int argc, char const *argv[]){
 
 	if(!getConfig()) return 0;
 
-	//if(!serialInit(parameters[0], parameters[1])) return 0;
+	if(!serialInit(parameters[0], parameters[1])) return 0;
 
 	while(1){
 

@@ -18,6 +18,10 @@ struct midifile{
 	uint16_t format;
 	uint16_t tracks;
 	uint16_t division;
+	uint32_t tempo;
+	uint8_t deltaType;
+	//Zavysle na deltaType (bud v ticich na ctvrtinovou notu nebo v ticich na sekundu)
+	uint32_t timeMultiplier;
 	unsigned long trackSize;
 };
 

@@ -1,7 +1,10 @@
 #include "midi.h"
 #include "utils.h"
+#include "serial.h"
 #include <string.h>
+#include <unistd.h>
 #include <pthread.h>
+#include <time.h>
 
 //Zapne debug pro dekodovani/kodovani MIDI souboru
 //#define MIDI_DEBUG
@@ -9,13 +12,15 @@
 //Pointer na midi soubor
 FILE *midifp;
 pthread_t playerThread;
+//Struktura s udaji o souboru
+struct midifile playfile;
 
 int midiPlay(char songname[]){
 
-	trackStatus = 0;
+	//Zakladni tempo je 120beats/minute
+	playfile.tempo = 500000;
 
-	//Struktura s udaji o souboru
-	struct midifile playfile;
+	trackStatus = 0;
 
 	char dir[255];
 
@@ -65,6 +70,16 @@ int midiPlay(char songname[]){
 	playfile.tracks = ((data[10]<<8) | (data[11] & 0xff));
 	playfile.division = ((data[12]<<8) | (data[13] & 0xff));
 
+	playfile.deltaType = (playfile.division & 0x8000) >> 15;
+
+	if(playfile.deltaType){
+		//Format v ticih na sekundu (framech za sekundu a ticich na frame)
+		playfile.timeMultiplier = (playfile.division & 0x7f00)*(playfile.division & 0x00ff);
+	}else{
+		//Format je v ticich na ctvrtinovou notu
+		playfile.timeMultiplier = playfile.division & 0x7fff;
+	}
+
 	if(playfile.format != 0){
 		printf(ERROR "Soubor je typu %d (vicestopy), dostupne je pouze prehravani souboru typu 0 (jednostopy)!\n", playfile.format);
 		trackStatus = -1;
@@ -108,24 +123,37 @@ void *midiRTParser(void * args){
 	int noteChannel = 0;
 	char c;
 	unsigned char uc;
+	unsigned char cmd;
 
 	while(1){
 
-		unsigned long deltaTime = 0;
-		
+		unsigned long deltaTicks = 0;
 
 		//Vypocita se delta casu pro prikaz
 		do{
 			c = fgetc(fp);
-			deltaTime |= (c & 0x7f) & 0xff;
-			if(c & 0x80) deltaTime <<= 7;
+			deltaTicks |= (c & 0x7f) & 0xff;
+			if(c & 0x80) deltaTicks <<= 7;
 		}while(c & 0x80);
 
-		deltaSum += deltaTime;
+
+		if(playfile.deltaType){
+			usleep(((double)playfile.timeMultiplier*(double)deltaTicks)*1000000.0);
+		}else{
+			/*struct timespec tim;
+			tim.tv_sec = 0;
+			tim.tv_nsec = (((double)playfile.tempo / (double)playfile.timeMultiplier)*(double)deltaTicks*1000000000L);*/
+			//printf("Delay %lf\n", ((double)deltaTicks*((double)playfile.timeMultiplier/((double)playfile.tempo/60.0)))*100000.0);
+			//nanosleep(&tim, (struct timespec*)NULL);
+			usleep((((double)playfile.tempo / (double)playfile.timeMultiplier)*(double)deltaTicks));
+		}
+		
+		//deltaSum += deltaTicks;
 
 		c = fgetc(fp);
 
 		if((c & 0xf0) == 0x80 || (c & 0xf0) == 0x90){
+			cmd = c;
 			unsigned char note = fgetc(fp);
 			unsigned char velocity = fgetc(fp);
 			noteChannel = (c & 0x0f)+1;
@@ -133,27 +161,56 @@ void *midiRTParser(void * args){
 				printf("DT: %lu Channel: %d Note: %d  Velocity: %d\n", deltaSum, noteChannel, note, velocity);
 			#endif
 			prevNote = 1;
+			unsigned char serbuff[] = {cmd, note, velocity};
+			write(sercom, serbuff, 3);
 		}else if((c & 0xf0) == 0xA0){
-			fseek(fp, 2, SEEK_CUR);
+			cmd = c;
+			unsigned char note = fgetc(fp);
+			unsigned char pressure = fgetc(fp);
+			#ifdef MIDI_DEBUG
+				printf("DT: %lu Channel: %d Note: %d  Pressure: %d\n", deltaSum, (c & 0x0f)+1, note, pressure);
+			#endif
+			unsigned char serbuff[] = {cmd, note, pressure};
+			write(sercom, serbuff, 3);
 			prevNote = 0;
 		}else if((c & 0xf0) == 0xB0){
+			cmd = c;
 			unsigned char controller = fgetc(fp);
 			unsigned char value = fgetc(fp);
 			#ifdef MIDI_DEBUG
 				printf("DT: %lu Channel: %d Controller: %d  Value: %d\n", deltaSum, (c & 0x0f)+1, controller, value);
 			#endif
+			unsigned char serbuff[] = {cmd, controller, value};
+			write(sercom, serbuff, 3);
 			prevNote = 0;
 		}else if((c & 0xf0) == 0xC0){
-			fseek(fp, 1, SEEK_CUR);
+			cmd = c;
+			unsigned char program = fgetc(fp);
+			#ifdef MIDI_DEBUG
+				printf("DT: %lu Channel: %d Program: %d\n", deltaSum, (c & 0x0f)+1, program);
+			#endif
+			unsigned char serbuff[] = {cmd, program};
+			write(sercom, serbuff, 2);
 			prevNote = 0;
 		}else if((c & 0xf0) == 0xD0){
-			fseek(fp, 1, SEEK_CUR);
+			cmd = c;
+			unsigned char pressure = fgetc(fp);
+			#ifdef MIDI_DEBUG
+				printf("DT: %lu Channel: %d Note: All Pressure: %d\n", deltaSum, (c & 0x0f)+1, pressure);
+			#endif
+			unsigned char serbuff[] = {cmd, pressure};
+			write(sercom, serbuff, 2);
 			prevNote = 0;
 		}else if((c & 0xf0) == 0xE0){
-			fseek(fp, 2, SEEK_CUR);
+			cmd = c;
+			unsigned char lsb = fgetc(fp);
+			unsigned char msb = fgetc(fp);
+			noteChannel = (c & 0x0f)+1;
+			unsigned char serbuff[] = {cmd, lsb, msb};
+			write(sercom, serbuff, 3);
 			prevNote = 0;
 		}else if((c & 0xff) == 0xF0){
-
+			cmd = c;
 			unsigned long sysexLenght = 0;
 
 			do{
@@ -179,9 +236,13 @@ void *midiRTParser(void * args){
 			#endif
 
 			prevNote = 0;
+			unsigned char serbuff[] = {cmd, sysexLenght};
+			write(sercom, serbuff, 3);
+			write(sercom, sysexData, sysexLenght);
+
 
 		}else if((c & 0xff) == 0xFF){
-
+			cmd = c;
 			int metaType = fgetc(fp);
 
 			unsigned long metaLenght = 0;
@@ -209,6 +270,14 @@ void *midiRTParser(void * args){
 				break;
 			}
 
+			if(metaType == 81){
+				playfile.tempo = ((metaData[0] << 16) | (metaData[1] << 8) | metaData[2]);	
+			}
+
+			unsigned char serbuff[] = {cmd, metaType, metaLenght};
+			write(sercom, serbuff, 3);
+			write(sercom, metaData, metaLenght);
+
 			prevNote = 0;
 		}else if(prevNote){
 			unsigned char note = c;
@@ -217,7 +286,11 @@ void *midiRTParser(void * args){
 				printf("DT: %lu Channel: %d Note: %d  Velocity: %d\n", deltaSum, noteChannel, note, velocity);
 			#endif
 			prevNote = 1;
+			unsigned char serbuff[] = {cmd, note, velocity};
+			write(sercom, serbuff, 3);
 		}
+
+
 
 	}
 
