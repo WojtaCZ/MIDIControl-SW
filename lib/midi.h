@@ -17,6 +17,7 @@ void midiStop();
 int midiRec(char songname[]);
 void *midiPlayParser(void * args);
 void *midiRecordParser(void * args);
+unsigned long long int toVLQ(unsigned long long int dt, int *bytes);
 
 struct midifile{
 	uint16_t format;

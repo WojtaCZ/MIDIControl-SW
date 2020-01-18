@@ -3,6 +3,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <dirent.h>
+#include <math.h>
 
 int getConfig(){
 	//Promenne funkce
@@ -84,3 +85,7 @@ int getDirContents(char * directory, char *(*filearray)[500], int * count){
 	return(0);
 }
 
+long timeDiff(struct timespec start, struct timespec end){
+ 	long diff = round((double)((end.tv_sec - start.tv_sec) * (long)1e9 + (end.tv_nsec - start.tv_nsec))/(double)1e3);   
+    return diff;
+}

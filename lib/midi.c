@@ -5,9 +5,10 @@
 #include <unistd.h>
 #include <pthread.h>
 #include <time.h>
+#include <netinet/in.h>
 
 //Zapne debug pro dekodovani/kodovani MIDI souboru
-//#define MIDI_DEBUG
+#define MIDI_DEBUG
 
 //Pointer na midi soubor
 FILE *midifp;
@@ -102,7 +103,7 @@ int midiPlay(char songname[]){
 	playfile.trackSize = ((data[0] << 24) | (data[1] << 16) | (data[2] << 8) | (data[3]));	
 
 	#ifdef MIDI_DEBUG
-		printf("File format: %d  Track Count: %d  Time division: %d Track size: %ld\n",playfile.format, playfile.tracks, playfile.division, playfile.trackSize);
+		printf("File format: %d  Track Count: %d  Time division: %d Time multiplier: %ld Track size: %lu\n",playfile.format, playfile.tracks, playfile.division, playfile.timeMultiplier, playfile.trackSize);
 	#endif
 
 
@@ -174,7 +175,7 @@ void *midiPlayParser(void * args){
 			usleep((((double)playfile.tempo / (double)playfile.timeMultiplier)*(double)deltaTicks));
 		}
 		
-		//deltaSum += deltaTicks;
+		deltaSum += deltaTicks;
 
 		c = fgetc(fp);
 
@@ -332,8 +333,10 @@ int midiRec(char songname[]){
 	if(trackStatus == 1 || trackStatus == 3) return 0;
 
 	//Zakladni tempo je 120beats/minute
-	recfile.tempo = 500000;
-	recfile.division = 384;
+	recfile.tempo = 500000; //us/1/4
+	recfile.division = 384; //tick/1/4
+
+	recfile.timeMultiplier = 384;
 
 	trackStatus = 0;
 
@@ -360,10 +363,10 @@ int midiRec(char songname[]){
 		return 0;
 	}
 
-	printf("%x %x", (recfile.division & 0x00f0), (recfile.division & 0x000f));
+	printf("%x %x", (recfile.division & 0xff00)>>8, (recfile.division & 0x00ff));
 
 	//Vytvori se hlavicka MIDI souboru
-	unsigned char headerBuffer[] = {'M', 'T', 'h', 'd', 0, 0, 0, 6, 0, 0, 0, 1, (recfile.division & 0xff00), (recfile.division & 0x00ff), 'M', 'T', 'r', 'k'};
+	unsigned char headerBuffer[] = {'M', 'T', 'h', 'd', 0, 0, 0, 6, 0, 0, 0, 1, (recfile.division & 0xff00) >> 8, (recfile.division & 0x00ff), 'M', 'T', 'r', 'k', 0x00, 0x00, 0x00, 0x00};
 
 
 	for(int i = 0; i < sizeof(headerBuffer); i++){
@@ -371,14 +374,13 @@ int midiRec(char songname[]){
 		fprintf(midifp, "%c", headerBuffer[i]);
 	}
 
-	
 
-	fclose(midifp);
-
-	//int err = pthread_create(&recorderThread, NULL, &midiRecordParser, (void *)midifp);
-    //if (err != 0) printf(ERROR "Nepodarilo se spustit vlakno nahravace! Chyba: %s\n", strerror(err));
+	int err = pthread_create(&recorderThread, NULL, &midiRecordParser, (void *)midifp);
+    if (err != 0) printf(ERROR "Nepodarilo se spustit vlakno nahravace! Chyba: %s\n", strerror(err));
 
 	//midiPlayParser(midifp);
+
+
 
 	return 0;
 
@@ -390,43 +392,347 @@ void *midiRecordParser(void * args){
 
 	FILE *fp = args;
 
+	struct timespec time1, time2;
+	char byte[10];
+	int second = 1;
+	long delta;
+	unsigned long long int deltaTicks;
+
+
 	trackStatus = 3;
-	unsigned long deltaSum = 0;
 	//Promenna pro kontrolu predchazejiciho prikazu
 	int prevNote = 0;
 	int noteChannel = 0;
-	char c;
+	
 	unsigned char uc;
-	unsigned char cmd;
 
-	while(1){
+	unsigned char c[100];
+	unsigned char cmd = 0;
+	unsigned int reqBytes = 1, readBytes = 0;
+	long long int lenght = 0;
 
-		unsigned long deltaTicks = 0;
+	clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &time1);
 
-		//Vypocita se delta casu pro prikaz
-		do{
-			c = fgetc(fp);
-			deltaTicks |= (c & 0x7f) & 0xff;
-			if(c & 0x80) deltaTicks <<= 7;
-		}while(c & 0x80);
+	while(trackStatus == 3){
+
+		readBytes = read(sercom, c, reqBytes);
+
+		if(readBytes == reqBytes){
+
+			if(cmd == 0){
+				cmd = c[0];
+				if(cmd != 0xfe){
+					clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &time2);
+					double time = (double)timeDiff(time1, time2);
+					delta = round((double)timeDiff(time1, time2)/((double)recfile.tempo/(double)recfile.timeMultiplier));
+					clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &time1);
+				}
+			}
+
+			if((cmd & 0xf0) == 0x80 || (cmd & 0xf0) == 0x90){
+
+				reqBytes = 2;
+
+				if(readBytes == reqBytes){
+					noteChannel = (cmd & 0x0f)+1;
+					unsigned char note = c[0];
+					unsigned char velocity = c[1];
+					
+					#ifdef MIDI_DEBUG
+						printf("DT: %lu Channel: %d Note: %d  Velocity: %d\n", delta, noteChannel, note, velocity);
+					#endif
+					
+					int len = 0;
+					deltaTicks = toVLQ(delta, &len);
+
+					fwrite(&deltaTicks, len, 1, fp);
+					recfile.trackSize += (len + 3);
+
+					//Vytvori se hlavicka MIDI souboru
+					unsigned char fileBuff[] = {cmd, note, velocity};
+
+					for(int i = 0; i < sizeof(fileBuff); i++){
+						//Header se vlozi do souboru
+						fprintf(fp, "%c", fileBuff[i]);
+					}
+
+					prevNote = 1;
+					cmd = 0;
+					reqBytes = 1;
+
+				}
+
+			}else if((cmd & 0xf0) == 0xA0){
+
+				reqBytes = 2;
+
+				if(readBytes == reqBytes){
+					noteChannel = (cmd & 0x0f)+1;
+					unsigned char note = c[0];
+					unsigned char pressure = c[1];
+					#ifdef MIDI_DEBUG
+						printf("DT: %lu Channel: %d Note: %d  Pressure: %d\n", delta, noteChannel, note, pressure);
+					#endif
+
+					int len = 0;
+					deltaTicks = toVLQ(delta, &len);
+
+					fwrite(&deltaTicks, len, 1, fp);
+					recfile.trackSize += (len + 3);
+
+					unsigned char fileBuff[] = {cmd, note, pressure};
+
+					for(int i = 0; i < sizeof(fileBuff); i++){
+						fprintf(fp, "%c", fileBuff[i]);
+					}
 
 
-		if(playfile.deltaType){
-			usleep(((double)playfile.timeMultiplier*(double)deltaTicks)*1000000.0);
-		}else{
-			/*struct timespec tim;
-			tim.tv_sec = 0;
-			tim.tv_nsec = (((double)playfile.tempo / (double)playfile.timeMultiplier)*(double)deltaTicks*1000000000L);*/
-			//printf("Delay %lf\n", ((double)deltaTicks*((double)playfile.timeMultiplier/((double)playfile.tempo/60.0)))*100000.0);
-			//nanosleep(&tim, (struct timespec*)NULL);
-			usleep((((double)playfile.tempo / (double)playfile.timeMultiplier)*(double)deltaTicks));
+					cmd = 0;
+					reqBytes = 1;
+					prevNote = 0;
+				}
+				
+			}else if((cmd & 0xf0) == 0xB0){
+
+				reqBytes = 2;
+
+				if(readBytes == reqBytes){
+					noteChannel = (cmd & 0x0f)+1;
+					unsigned char controller = c[0];
+					unsigned char value = c[1];
+					#ifdef MIDI_DEBUG
+						printf("DT: %lu Channel: %d Controller: %d  Value: %d\n", delta, noteChannel, controller, value);
+					#endif
+
+					int len = 0;
+					deltaTicks = toVLQ(delta, &len);
+
+					fwrite(&deltaTicks, len, 1, fp);
+					recfile.trackSize += (len + 3);
+
+					unsigned char fileBuff[] = {cmd, controller, value};
+
+					for(int i = 0; i < sizeof(fileBuff); i++){
+						fprintf(fp, "%c", fileBuff[i]);
+					}
+
+					cmd = 0;
+					reqBytes = 1;
+					prevNote = 0;
+				}
+				
+			}else if((cmd & 0xf0) == 0xC0){
+
+				
+				reqBytes = 1;
+
+				if(readBytes == reqBytes && c[0] != cmd){
+					noteChannel = (cmd & 0x0f)+1;
+					unsigned char program = c[0];
+					#ifdef MIDI_DEBUG
+						printf("DT: %lu Channel: %d Program: %d\n", delta, noteChannel, program);
+					#endif
+
+					int len = 0;
+					deltaTicks = toVLQ(delta, &len);
+
+					fwrite(&deltaTicks, len, 1, fp);
+					recfile.trackSize += (len + 2);
+
+					unsigned char fileBuff[] = {cmd, program};
+
+					for(int i = 0; i < sizeof(fileBuff); i++){
+						fprintf(fp, "%c", fileBuff[i]);
+					}
+
+					cmd = 0;
+					reqBytes = 1;
+					prevNote = 0;
+				}
+				
+			}else if((cmd & 0xf0) == 0xD0){
+
+				reqBytes = 1;
+
+				if(readBytes == reqBytes){
+					noteChannel = (cmd & 0x0f)+1;
+					unsigned char pressure = c[0];
+					#ifdef MIDI_DEBUG
+						printf("DT: %lu Channel: %d Note: All Pressure: %d\n", delta, noteChannel, pressure);
+					#endif
+
+					int len = 0;
+					deltaTicks = toVLQ(delta, &len);
+
+					fwrite(&deltaTicks, len, 1, fp);
+					recfile.trackSize += (len + 2);
+
+					unsigned char fileBuff[] = {cmd, pressure};
+
+					for(int i = 0; i < sizeof(fileBuff); i++){
+						fprintf(fp, "%c", fileBuff[i]);
+					}
+
+					cmd = 0;
+					reqBytes = 1;
+					prevNote = 0;
+				}
+			}else if((cmd & 0xf0) == 0xE0){
+
+				reqBytes = 2;
+
+				if(readBytes == reqBytes){
+					noteChannel = (cmd & 0x0f)+1;
+					unsigned char lsb = c[0];
+					unsigned char msb = c[1];
+					#ifdef MIDI_DEBUG
+						printf("DT: %lu Channel: %d Note: All Pitch: %d\n", delta, noteChannel, (msb << 8) | (lsb<<1));
+					#endif
+
+					int len = 0;
+					deltaTicks = toVLQ(delta, &len);
+
+					fwrite(&deltaTicks, len, 1, fp);
+					recfile.trackSize += (len + 3);
+
+					unsigned char fileBuff[] = {cmd, lsb, msb};
+
+					for(int i = 0; i < sizeof(fileBuff); i++){
+						fprintf(fp, "%c", fileBuff[i]);
+					}
+
+
+					cmd = 0;
+					reqBytes = 1;
+					prevNote = 0;
+				}
+			}else if((cmd & 0xff) == 0xF0){
+
+				unsigned long sysexLenght = 0;
+
+				/*do{
+					//c = fgetc(fp);
+					sysexLenght |= (c & 0x7f) & 0xff;
+					if(c & 0x80) sysexLenght <<= 7;
+				}while(c & 0x80);*/
+
+				//unsigned char sysexData[255];
+				//memset(sysexData, 0, sizeof(sysexData));
+
+				//fread(sysexData, sysexLenght, 1, fp);
+
+				#ifdef MIDI_DEBUG
+					/*printf("DT: %lu Lenght: %lu Data: f0", deltaSum ,sysexLenght);
+
+					for(int i = 0; i < sysexLenght; i++){
+						printf(" %02x", sysexData[i]);
+					}
+
+					printf("\n");*/
+				
+				#endif
+
+				cmd = 0;
+				reqBytes = 1;
+				prevNote = 0;
+				//unsigned char serbuff[] = {cmd, sysexLenght};
+				//write(sercom, serbuff, 3);
+				//write(sercom, sysexData, sysexLenght);
+
+
+			}else if((cmd & 0xff) == 0xFF){
+				/*if(cmd == 0) cmd = c;
+				int metaType = fgetc(fp);
+
+				unsigned long metaLenght = 0;
+				do{
+					c = fgetc(fp);
+					metaLenght |= (c & 0x7f) & 0xff;
+					if(c & 0x80) metaLenght <<= 7;
+				}while(c & 0x80);
+*/
+				/*unsigned char metaData[255];
+				memset(metaData, 0, sizeof(metaData));
+
+				fread(metaData, metaLenght, 1, fp);
+				#ifdef MIDI_DEBUG
+					if(metaType > 0 && metaType < 7){
+						printf("DT: %lu  Meta type: %d  Lenght: %lu Data: %s\n", deltaSum, metaType ,metaLenght, metaData);
+					}else{
+						printf("DT: %lu  Meta type: %d  Lenght: %lu\n", deltaSum, metaType ,metaLenght);
+					}
+				#endif
+
+				// 47 je konec tracku, vyskoci ze smycky
+				if(metaType == 47){
+					trackStatus = 0;
+					break;
+				}
+
+				if(metaType == 81){
+					playfile.tempo = ((metaData[0] << 16) | (metaData[1] << 8) | metaData[2]);	
+				}
+
+				unsigned char serbuff[] = {cmd, metaType, metaLenght};*/
+				//write(sercom, serbuff, 3);
+				//write(sercom, metaData, metaLenght);
+
+				cmd = 0;
+				reqBytes = 1;
+				prevNote = 0;
+			}else if((cmd & 0xff) == 0xfe){
+				reqBytes = 1;
+				cmd = 0;
+				prevNote = 0;
+				#ifdef MIDI_DEBUG
+					printf("Active sensing\n");
+				#endif
+
+			}else if(prevNote){
+				//unsigned char note = c;
+				//unsigned char velocity = fgetc(fp);
+				#ifdef MIDI_DEBUG
+					//printf("DT: %lu Channel: %d Note: %d  Velocity: %d\n", deltaSum, noteChannel, note, velocity);
+				#endif
+				//prevNote = 1;
+				//unsigned char serbuff[] = {cmd, note, velocity};
+				//write(sercom, serbuff, 3);
+			}
+
+		
 		}
-		
-		
 
+	}
+
+
+	fseek(fp,18 ,SEEK_SET);
+
+	//Do hlavicky se doda delka
+	unsigned char headerBuffer[] = {(recfile.trackSize & 0xff000000)>>24, (recfile.trackSize & 0xff0000)>>16, (recfile.trackSize & 0xff00)>>8, (recfile.trackSize & 0xff)};
+
+	for(int i = 0; i < sizeof(headerBuffer); i++){
+		//Header se vlozi do souboru
+		fprintf(fp, "%c", headerBuffer[i]);
 	}
 
 	fclose(fp);
 	trackStatus = 0;
 	return NULL;
 }
+
+unsigned long long int toVLQ(unsigned long long int dt, int *bytes){
+	unsigned long long int out = 0;
+
+	out = dt & 0x7f;
+	while((dt >>= 7) > 0){
+ 		out <<= 8;
+ 		out |= 0x80;
+ 		out += (dt & 0x7f);
+ 		(*bytes)++;
+ 	}
+
+ 	(*bytes)++;
+ 	return out;
+
+}
+

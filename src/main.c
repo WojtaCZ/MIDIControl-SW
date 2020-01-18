@@ -26,7 +26,11 @@ int main(int argc, char const *argv[]){
 	
 	//getDirContents("/home/vojtech/Dokumenty/MIDI_soubory", &files, &fileCount);
 
-	//if(!serialInit(parameters[0], parameters[1])) return 0;
+	if(!serialInit(parameters[0], parameters[1])) return 0;
+
+	int bt = 0;
+	unsigned long long int vlq = toVLQ(0x00004000, &bt);
+	printf("::::: %x  %x  %x\n", vlq, ntohl(vlq), htonl(vlq));
 
 	while(1){
 

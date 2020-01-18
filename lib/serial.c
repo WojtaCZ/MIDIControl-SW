@@ -7,7 +7,7 @@
 #include <stdlib.h>
 
 int serialInit(char port[], char baud[]){
-	sercom = open(port, O_RDWR | O_NOCTTY);
+	sercom = open(port, O_RDWR | O_NOCTTY | O_NDELAY);
 	if(sercom < 1){
 		printf(ERROR "Seriovy port %s nelze otevrit!\n", port);
 		return 0;
@@ -35,6 +35,14 @@ int serialConfig(int sercom, char port[], char baud[]){
 		printf(ERROR "Nepodarilo se nacist aktualni konfiguraci portu %s.\n", port);
 		return 0;
 	}
+
+	serconfig.c_iflag &= ~(IGNBRK | BRKINT | ICRNL | INLCR | PARMRK | INPCK | ISTRIP | IXON);
+	serconfig.c_oflag = 0;
+	serconfig.c_lflag &= ~(ECHO | ECHONL | ICANON | IEXTEN | ISIG);
+	serconfig.c_cflag &= ~(CSIZE | PARENB);
+	serconfig.c_cflag |= CS8;
+	serconfig.c_cc[VMIN]  = 1;
+	serconfig.c_cc[VTIME] = 0;
 
 	int baudConverted;
 	//Prevede se slovni vyjadreni na definici prenosove rychlosti
@@ -113,8 +121,15 @@ int serialConfig(int sercom, char port[], char baud[]){
 	}else if(baudConverted == -2){
 		baudConverted = B2000000;
 		printf(ISSUE "Zvolena prenosova rychlost %dbps neni sandardni rychlosti. Rychlost nastavena na 2000000bps!\n", atoi(baud));
-	}else{
+	}else if(cfsetispeed(&serconfig, baudConverted) >= 0 || cfsetospeed(&serconfig, baudConverted) >= 0){
 		printf(OK "Prenosova rychlost seriove linky uspesne nastavena na %dbps.\n", atoi(baud));
+	}else{
+		printf(ERROR "Nepodarilo se nastavit rychlost serioveho portu!\n");
+	}
+
+	if(tcsetattr(sercom, TCSAFLUSH, &serconfig) < 0){
+		printf(ERROR "Nepodarilo se nastavit parametry serioveho portu!\n");
+		return 0;
 	}
 
 	return 1;
