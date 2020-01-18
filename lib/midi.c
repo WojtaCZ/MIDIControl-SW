@@ -12,10 +12,14 @@
 //Pointer na midi soubor
 FILE *midifp;
 pthread_t playerThread;
+pthread_t recorderThread;
 //Struktura s udaji o souboru
-struct midifile playfile;
+struct midifile playfile, recfile;
 
 int midiPlay(char songname[]){
+
+	//Kontrola zda uz se neprehrava/nenahrava
+	if(trackStatus == 1 || trackStatus == 3) return 0;
 
 	//Zakladni tempo je 120beats/minute
 	playfile.tempo = 500000;
@@ -102,17 +106,39 @@ int midiPlay(char songname[]){
 	#endif
 
 
-	int err = pthread_create(&playerThread, NULL, &midiRTParser, (void *)midifp);
+	int err = pthread_create(&playerThread, NULL, &midiPlayParser, (void *)midifp);
     if (err != 0) printf(ERROR "Nepodarilo se spustit vlakno prehravace! Chyba: %s\n", strerror(err));
 
-	//midiRTParser(midifp);
+   	trackStatus = 1;
+	//midiPlayParser(midifp);
 
 	return 0;
 
 
 }
 
-void *midiRTParser(void * args){
+void midiStop(){
+	//Pokud se udela stop pri prehravani
+	if(trackStatus == 1){
+		//Killne se prehravani
+		pthread_cancel(playerThread);
+		fclose(midifp);
+
+		//Vypnou se vsechny noty
+		for(int i = 0; i <= 0xf; i++){
+				for(int j = 0; j <= 127; j++){
+					char serbuff[] = {(0x80 | i), j, 64};
+					write(sercom, serbuff, 3);
+				}
+		}
+	}
+
+	trackStatus = 0;
+
+
+}
+
+void *midiPlayParser(void * args){
 
 	FILE *fp = args;
 
@@ -295,5 +321,112 @@ void *midiRTParser(void * args){
 	}
 
 	fclose(fp);
+	trackStatus = 0;
+	return NULL;
+}
+
+
+int midiRec(char songname[]){
+
+	//Kontrola zda uz se neprehrava/nenahrava
+	if(trackStatus == 1 || trackStatus == 3) return 0;
+
+	//Zakladni tempo je 120beats/minute
+	recfile.tempo = 500000;
+	recfile.division = 384;
+
+	trackStatus = 0;
+
+	char dir[255];
+
+	//Nastaveni cest
+	strcpy(dir, parameters[2]);
+	strcat(dir, "/");
+	strcat(dir, songname);
+	strcat(dir, ".mid");
+	
+	//Pokud soubor existuje
+	if(access(dir, F_OK) != -1){
+		printf(ERROR "Zadany soubor %s jiz existuje!\n", dir);
+		return 0;
+	}
+
+	//Soubor se vytvori
+	midifp = fopen(dir, "wb");
+
+	if(midifp == NULL){
+		printf(ERROR "Zadany soubor %s se nepodarilo vytvorit!\n", dir);
+		trackStatus = -1;
+		return 0;
+	}
+
+	printf("%x %x", (recfile.division & 0x00f0), (recfile.division & 0x000f));
+
+	//Vytvori se hlavicka MIDI souboru
+	unsigned char headerBuffer[] = {'M', 'T', 'h', 'd', 0, 0, 0, 6, 0, 0, 0, 1, (recfile.division & 0xff00), (recfile.division & 0x00ff), 'M', 'T', 'r', 'k'};
+
+
+	for(int i = 0; i < sizeof(headerBuffer); i++){
+		//Header se vlozi do souboru
+		fprintf(midifp, "%c", headerBuffer[i]);
+	}
+
+	
+
+	fclose(midifp);
+
+	//int err = pthread_create(&recorderThread, NULL, &midiRecordParser, (void *)midifp);
+    //if (err != 0) printf(ERROR "Nepodarilo se spustit vlakno nahravace! Chyba: %s\n", strerror(err));
+
+	//midiPlayParser(midifp);
+
+	return 0;
+
+
+}
+
+
+void *midiRecordParser(void * args){
+
+	FILE *fp = args;
+
+	trackStatus = 3;
+	unsigned long deltaSum = 0;
+	//Promenna pro kontrolu predchazejiciho prikazu
+	int prevNote = 0;
+	int noteChannel = 0;
+	char c;
+	unsigned char uc;
+	unsigned char cmd;
+
+	while(1){
+
+		unsigned long deltaTicks = 0;
+
+		//Vypocita se delta casu pro prikaz
+		do{
+			c = fgetc(fp);
+			deltaTicks |= (c & 0x7f) & 0xff;
+			if(c & 0x80) deltaTicks <<= 7;
+		}while(c & 0x80);
+
+
+		if(playfile.deltaType){
+			usleep(((double)playfile.timeMultiplier*(double)deltaTicks)*1000000.0);
+		}else{
+			/*struct timespec tim;
+			tim.tv_sec = 0;
+			tim.tv_nsec = (((double)playfile.tempo / (double)playfile.timeMultiplier)*(double)deltaTicks*1000000000L);*/
+			//printf("Delay %lf\n", ((double)deltaTicks*((double)playfile.timeMultiplier/((double)playfile.tempo/60.0)))*100000.0);
+			//nanosleep(&tim, (struct timespec*)NULL);
+			usleep((((double)playfile.tempo / (double)playfile.timeMultiplier)*(double)deltaTicks));
+		}
+		
+		
+
+	}
+
+	fclose(fp);
+	trackStatus = 0;
 	return NULL;
 }

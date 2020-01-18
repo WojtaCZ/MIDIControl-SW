@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <dirent.h>
 #include <readline/readline.h>
 #include <readline/history.h>
 #include "main.h"
@@ -9,21 +10,28 @@
 #include "../lib/midi.h"
 #include "../lib/commands.h"
 
+int fileCount;
+char * line;
+//char *files[500];
 
 int main(int argc, char const *argv[]){
 
 	printf("\n\e[1mZapina se MIDI controll verze %s\e[0m\n(c) Vojtech Vosahlo 2019\n\n\n", version);
-
+	line = (char *) malloc(500);
 	consoleLine = (char *) malloc(100);
+
 	trackStatus = 0;
 
 	if(!getConfig()) return 0;
+	
+	//getDirContents("/home/vojtech/Dokumenty/MIDI_soubory", &files, &fileCount);
 
-	if(!serialInit(parameters[0], parameters[1])) return 0;
+	//if(!serialInit(parameters[0], parameters[1])) return 0;
 
 	while(1){
 
 		rl_attempted_completion_function = cmd_completition;
+		
 
 		switch(trackStatus){
 			case 0: consoleLine = "\e[2mMIDIctrl (\e[1mPripraveno\e[0m\e[2m)\e[0m  > ";
@@ -36,13 +44,19 @@ int main(int argc, char const *argv[]){
 			break;
 		}
 
-		char * line = readline(consoleLine);
+		for(int i = 0; i < fileCount; i++) printf("%s\n", files[i]);
+
+		line = readline(consoleLine);
         if(!line) break;
-        if(*line) add_history(line);
-        
+        if(*line) add_history(line);        
+
         sscanf(line, "%s %s", cmd, name);
         if(!strcmp(cmd, "play")){
-				midiPlay(name);
+			midiPlay(name);
+		}
+
+		if(!strcmp(cmd, "record")){
+				midiRec(name);
 		}
 
 		if(!strcmp(cmd, "pause")){
@@ -50,7 +64,7 @@ int main(int argc, char const *argv[]){
 		}
 
 		if(!strcmp(cmd, "stop")){
-				trackStatus = 3;
+				midiStop();
 		}
 
 		if(!strcmp(cmd, "resume")){
@@ -80,15 +94,46 @@ char * cmd_completition_gen(const char *text, int state){
     if (!state) {
         list_index = 0;
         len = strlen(text);
-    }
+    }		
 
-    //printf("txt: %s\n", rl_line_buffer);
 
-    while ((name = maincmds[list_index++].cmd)) {
-        if (strncmp(name, text, len) == 0) {
-            return strdup(name);
-        }
+    if(strstr(rl_line_buffer, "play")){
+
+    	DIR *d;
+		int i = 2;
+		struct dirent *dir;
+		d = opendir("/home/vojtech/Dokumenty/MIDI_soubory");
+		files[0].cmd = ".";
+		files[1].cmd = "..";
+	    //files[1].desc = NULL;
+		if(d){
+	    	while((dir = readdir(d)) != NULL){
+	    		if(strcmp(dir->d_name, ".") != 0 || strcmp(dir->d_name, "..") != 0){
+	    			files[i].cmd = dir->d_name;
+	    			files[i].desc = NULL;
+	    			i++;
+	    		}
+	    		
+	   		}
+			closedir(d);
+		}
+
+		files[i].cmd = NULL;
+	    files[i].desc = NULL;
+
+    	while ((name = files[list_index++].cmd)) {
+        	if (strncmp(name, text, len) == 0) {
+            	return strdup(name);
+        	}
+    	}
+    }else{
+    	while ((name = maincmds[list_index++].cmd)) {
+        	if (strncmp(name, text, len) == 0) {
+            	return strdup(name);
+        	}
+    	}
     }
+   
 
     return NULL;
 }

@@ -9,10 +9,14 @@
 // 0 - nic nehraje
 // 1 - prehrava se
 // 2 - pozastaveno
+// 3 - nahravani
 int trackStatus;
 
 int midiPlay(char songname[]);
-void *midiRTParser(void * args);
+void midiStop();
+int midiRec(char songname[]);
+void *midiPlayParser(void * args);
+void *midiRecordParser(void * args);
 
 struct midifile{
 	uint16_t format;
