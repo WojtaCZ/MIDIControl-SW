@@ -129,7 +129,9 @@ void midiStop(){
 		for(int i = 0; i <= 0xf; i++){
 				for(int j = 0; j <= 127; j++){
 					char serbuff[] = {(0x80 | i), j, 64};
-					write(sercom, serbuff, 3);
+					sem_wait(&sercomLock);
+					write(sercom, serbuff, sizeof(serbuff));
+					sem_post(&sercomLock);
 				}
 		}
 	}
@@ -189,7 +191,9 @@ void *midiPlayParser(void * args){
 			#endif
 			prevNote = 1;
 			unsigned char serbuff[] = {cmd, note, velocity};
-			write(sercom, serbuff, 3);
+			sem_wait(&sercomLock);
+			write(sercom, serbuff, sizeof(serbuff));
+			sem_post(&sercomLock);
 		}else if((c & 0xf0) == 0xA0){
 			cmd = c;
 			unsigned char note = fgetc(fp);
@@ -198,7 +202,9 @@ void *midiPlayParser(void * args){
 				printf("DT: %lu Channel: %d Note: %d  Pressure: %d\n", deltaSum, (c & 0x0f)+1, note, pressure);
 			#endif
 			unsigned char serbuff[] = {cmd, note, pressure};
-			write(sercom, serbuff, 3);
+			sem_wait(&sercomLock);
+			write(sercom, serbuff, sizeof(serbuff));
+			sem_post(&sercomLock);
 			prevNote = 0;
 		}else if((c & 0xf0) == 0xB0){
 			cmd = c;
@@ -208,7 +214,9 @@ void *midiPlayParser(void * args){
 				printf("DT: %lu Channel: %d Controller: %d  Value: %d\n", deltaSum, (c & 0x0f)+1, controller, value);
 			#endif
 			unsigned char serbuff[] = {cmd, controller, value};
-			write(sercom, serbuff, 3);
+			sem_wait(&sercomLock);
+			write(sercom, serbuff, sizeof(serbuff));
+			sem_post(&sercomLock);
 			prevNote = 0;
 		}else if((c & 0xf0) == 0xC0){
 			cmd = c;
@@ -217,7 +225,9 @@ void *midiPlayParser(void * args){
 				printf("DT: %lu Channel: %d Program: %d\n", deltaSum, (c & 0x0f)+1, program);
 			#endif
 			unsigned char serbuff[] = {cmd, program};
-			write(sercom, serbuff, 2);
+			sem_wait(&sercomLock);
+			write(sercom, serbuff, sizeof(serbuff));
+			sem_post(&sercomLock);
 			prevNote = 0;
 		}else if((c & 0xf0) == 0xD0){
 			cmd = c;
@@ -226,7 +236,9 @@ void *midiPlayParser(void * args){
 				printf("DT: %lu Channel: %d Note: All Pressure: %d\n", deltaSum, (c & 0x0f)+1, pressure);
 			#endif
 			unsigned char serbuff[] = {cmd, pressure};
-			write(sercom, serbuff, 2);
+			sem_wait(&sercomLock);
+			write(sercom, serbuff, sizeof(serbuff));
+			sem_post(&sercomLock);
 			prevNote = 0;
 		}else if((c & 0xf0) == 0xE0){
 			cmd = c;
@@ -234,7 +246,9 @@ void *midiPlayParser(void * args){
 			unsigned char msb = fgetc(fp);
 			noteChannel = (c & 0x0f)+1;
 			unsigned char serbuff[] = {cmd, lsb, msb};
-			write(sercom, serbuff, 3);
+			sem_wait(&sercomLock);
+			write(sercom, serbuff, sizeof(serbuff));
+			sem_post(&sercomLock);
 			prevNote = 0;
 		}else if((c & 0xff) == 0xF0){
 			cmd = c;
@@ -264,8 +278,11 @@ void *midiPlayParser(void * args){
 
 			prevNote = 0;
 			unsigned char serbuff[] = {cmd, sysexLenght};
-			write(sercom, serbuff, 3);
+			sem_wait(&sercomLock);
+			write(sercom, serbuff, sizeof(serbuff));
 			write(sercom, sysexData, sysexLenght);
+			sem_post(&sercomLock);
+			
 
 
 		}else if((c & 0xff) == 0xFF){
@@ -297,13 +314,16 @@ void *midiPlayParser(void * args){
 				break;
 			}
 
-			if(metaType == 81){
+			if(metaType == 51){
 				playfile.tempo = ((metaData[0] << 16) | (metaData[1] << 8) | metaData[2]);	
 			}
 
 			unsigned char serbuff[] = {cmd, metaType, metaLenght};
-			write(sercom, serbuff, 3);
+			sem_wait(&sercomLock);
+			write(sercom, serbuff, sizeof(serbuff));
 			write(sercom, metaData, metaLenght);
+			sem_post(&sercomLock);
+			
 
 			prevNote = 0;
 		}else if(prevNote){
@@ -314,7 +334,9 @@ void *midiPlayParser(void * args){
 			#endif
 			prevNote = 1;
 			unsigned char serbuff[] = {cmd, note, velocity};
-			write(sercom, serbuff, 3);
+			sem_wait(&sercomLock);
+			write(sercom, serbuff, sizeof(serbuff));
+			sem_post(&sercomLock);
 		}
 
 
@@ -334,9 +356,9 @@ int midiRec(char songname[]){
 
 	//Zakladni tempo je 120beats/minute
 	recfile.tempo = 500000; //us/1/4
-	recfile.division = 384; //tick/1/4
+	recfile.division = 1000; //tick/1/4
 
-	recfile.timeMultiplier = 384;
+	recfile.timeMultiplier = 1000;
 
 	trackStatus = 0;
 
@@ -366,7 +388,7 @@ int midiRec(char songname[]){
 	printf("%x %x", (recfile.division & 0xff00)>>8, (recfile.division & 0x00ff));
 
 	//Vytvori se hlavicka MIDI souboru
-	unsigned char headerBuffer[] = {'M', 'T', 'h', 'd', 0, 0, 0, 6, 0, 0, 0, 1, (recfile.division & 0xff00) >> 8, (recfile.division & 0x00ff), 'M', 'T', 'r', 'k', 0x00, 0x00, 0x00, 0x00};
+	unsigned char headerBuffer[] = {'M', 'T', 'h', 'd', 0, 0, 0, 6, 0, 0, 0, 1, (recfile.division & 0xff00) >> 8, (recfile.division & 0x00ff), 'M', 'T', 'r', 'k', 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0x51, 0x03, recfile.tempo & 0xff0000, recfile.tempo & 0x00ff00,recfile.tempo & 0x0000ff};
 
 
 	for(int i = 0; i < sizeof(headerBuffer); i++){
@@ -375,7 +397,17 @@ int midiRec(char songname[]){
 	}
 
 
-	int err = pthread_create(&recorderThread, NULL, &midiRecordParser, (void *)midifp);
+	int rc;
+	pthread_attr_t attr;
+	struct sched_param param;
+
+	rc = pthread_attr_init(&attr);
+	rc = pthread_attr_getschedparam(&attr, &param);
+	param.sched_priority += 100;
+	rc = pthread_attr_setschedparam(&attr, &param);
+
+
+	int err = pthread_create(&recorderThread, &attr, &midiRecordParser, (void *)midifp);
     if (err != 0) printf(ERROR "Nepodarilo se spustit vlakno nahravace! Chyba: %s\n", strerror(err));
 
 	//midiPlayParser(midifp);
@@ -415,9 +447,14 @@ void *midiRecordParser(void * args){
 
 	while(trackStatus == 3){
 
-		readBytes = read(sercom, c, reqBytes);
+		readBytes = serialMIDIRead(c, reqBytes);
+		//printf("Time: %f\n", time_spent);
+		//readBytes = read(sercom, c, reqBytes);
+
+		
 
 		if(readBytes == reqBytes){
+			//printf("XXX RB: %d REB: %d\n", readBytes, reqBytes);
 
 			if(cmd == 0){
 				cmd = c[0];

@@ -4,11 +4,13 @@
 #include <dirent.h>
 #include <readline/readline.h>
 #include <readline/history.h>
+#include <arpa/inet.h>
 #include "main.h"
 #include "../lib/utils.h"
 #include "../lib/serial.h"
 #include "../lib/midi.h"
 #include "../lib/commands.h"
+#include "../lib/communication.h"
 
 int fileCount;
 char * line;
@@ -28,9 +30,7 @@ int main(int argc, char const *argv[]){
 
 	if(!serialInit(parameters[0], parameters[1])) return 0;
 
-	int bt = 0;
-	unsigned long long int vlq = toVLQ(0x00004000, &bt);
-	printf("::::: %x  %x  %x\n", vlq, ntohl(vlq), htonl(vlq));
+	if(!devComInit()) return 0;
 
 	while(1){
 
