@@ -7,7 +7,7 @@ src = $(wildcard lib/*) #bylo *.c
 obj = $(src:.c=.o)
 
 CC=gcc
-CFLAGS= -std=c99 -lreadline -pthread -lm -D_SVID_SOURCE
+CFLAGS= -std=c99 -lreadline -lpthread -lm -D_SVID_SOURCE
 
 $(name): src/main.c $(obj)
 		$(CC) -o $@ $^ $(CFLAGS)

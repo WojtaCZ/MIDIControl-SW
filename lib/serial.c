@@ -9,6 +9,7 @@
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sched.h>
+#include <pthread.h>
 
 int serialInit(char port[], char baud[]){
 	sercom = open(port, O_RDWR | O_NOCTTY | O_NDELAY);
@@ -38,7 +39,17 @@ int serialInit(char port[], char baud[]){
     } 
 
 
-	int err = pthread_create(&serialReceiverThread, NULL, &serialReceiver, NULL);
+
+	int rc;
+	pthread_attr_t attr;
+	struct sched_param param;
+
+	rc = pthread_attr_init(&attr);
+	rc = pthread_attr_getschedparam(&attr, &param);
+	param.sched_priority += 100;
+	rc = pthread_attr_setschedparam(&attr, &param);
+
+	int err = pthread_create(&serialReceiverThread, &attr, &serialReceiver, NULL);
     if(err != 0){
     	printf(ERROR "Nepodarilo se spustit vlakno prijimace serioveho portu! Chyba: %s\n", strerror(err));
     	return 0;
@@ -180,12 +191,11 @@ int serialMIDIRead(void * buf, size_t count){
 
 int serialCMDRead(void * buf){
 	//printf("READ: %d\n", count);
-	if(recvMsgLen > 0){
+	if(cmdBuffIndex > 0){
 		sem_wait(&cmdBuffLock);
-		memcpy(buf, cmdBuffer, recvMsgLen+6);
+		memcpy(buf, cmdBuffer, cmdBuffIndex);
 		memset(cmdBuffer, 0, sizeof(cmdBuffer));
 		cmdBuffIndex = 0;
-		recvMsgLen = 0;
 		sem_post(&cmdBuffLock);
 		return 1;
 	}
@@ -195,22 +205,22 @@ int serialCMDRead(void * buf){
 
 int serialCMDAvailable(){
 	sem_wait(&cmdBuffLock);
-	int len = recvMsgLen;
+	int len = cmdBuffIndex;
 	sem_post(&cmdBuffLock);
 	return len;
 }
 
 void *serialReceiver(){
 
-	unsigned char recBytes[100];
-	int serReadBytes = 0, serReqBytes = 1, msgLen = 0, bytesAvailable = 0;
+	unsigned char recBytes[200];
+	int serReadBytes = 0, bytesAvailable = 0;
 
-	msgNullCounter = 0;
+	//msgNullCounter = 0;
 
 
 	sem_wait(&cmdBuffLock);
 	cmdBuffIndex = 0;
-	recvMsgLen = 0;
+	//recvMsgLen = 0;
 	sem_post(&cmdBuffLock);
 	sem_wait(&midiBuffLock);
 	midiBuffIndex = 0;
@@ -218,10 +228,53 @@ void *serialReceiver(){
 
 
 	while(1){
-		usleep(100);
-		serReadBytes = read(sercom, recBytes, serReqBytes);
 
-		//Pokud prijal byte
+		sem_wait(&sercomLock);
+		sem_wait(&midiBuffLock);
+
+		ioctl(sercom, FIONREAD, &bytesAvailable);
+
+		serReadBytes = read(sercom, recBytes, bytesAvailable);
+
+		if(serReadBytes > 0){
+
+			sem_wait(&cmdBuffLock);
+
+			unsigned long ptr = memchr(recBytes, '\0', sizeof(recBytes));
+
+	    	if(ptr > 0 && serReadBytes > 6){
+	    		ptr -= (unsigned long)recBytes;
+	        	if((recBytes[ptr] == 0 && recBytes[ptr+1] == 0 && recBytes[ptr+2] == 0 && recBytes[ptr+3] == 0) && (((recBytes[ptr+4] << 8) | recBytes[ptr+5]) > 0)){
+	            	int len = (recBytes[ptr+4]<<8) | recBytes[ptr+5];
+	            	memcpy(cmdBuffer, recBytes+ptr, len+6);
+	            	memmove(recBytes+ptr, recBytes+ptr+len+6, sizeof(recBytes));
+	            	memcpy(midiBuffer+midiBuffIndex, recBytes, serReadBytes-(len+6));
+	            	if(trackStatus == 3) midiBuffIndex += serReadBytes-(len+6);
+	            	cmdBuffIndex += len+6;
+	        	}else if(trackStatus == 3){
+	        		memcpy(midiBuffer+midiBuffIndex, recBytes, serReadBytes);
+	    			midiBuffIndex += serReadBytes;
+	    			//printf("DATA NULL\n");
+	        	}
+	        
+	    	}else if(trackStatus == 3){
+	        	memcpy(midiBuffer+midiBuffIndex, recBytes, serReadBytes);
+	    		midiBuffIndex += serReadBytes;
+	    		//printf("DATA\n");
+	        }
+
+	    	sem_post(&cmdBuffLock);
+
+	    	/*for(int i = 0; i < serReadBytes; i++){
+	    		printf("%02x\n", recBytes[i]);
+	    	}*/
+	    }
+
+	    serReadBytes = 0;
+
+	    sem_post(&sercomLock);
+	    sem_post(&midiBuffLock);
+		/*//Pokud prijal byte
 		if(serReadBytes == serReqBytes){
 
 			sem_wait(&sercomLock);
@@ -295,7 +348,7 @@ void *serialReceiver(){
 					//Jinak se normalne zapise byte do bufferu
 					sem_wait(&midiBuffLock);
 					midiBuffer[midiBuffIndex++] = recBytes[0];
-					//printf("B: %x\n", recBytes[0]);
+					printf("B: %x\n", recBytes[0]);
 					sem_post(&midiBuffLock);
 					sem_wait(&cmdBuffLock);
 					cmdBuffIndex = 0;
@@ -307,6 +360,8 @@ void *serialReceiver(){
 				
 				
 			}
-		}
+		}*/
+
+		usleep(10);
 	}
 }

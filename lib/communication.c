@@ -44,7 +44,7 @@ void *msgDecoder(){
 		if(serialCMDAvailable() > 0){
 			printf("CMD: ");
 			char buff[200];
-			int len = serialCMDAvailable()+6;
+			int len = serialCMDAvailable();
 			int i = serialCMDRead(buff);
 			
 			for(int i = 0; i < len; i++){

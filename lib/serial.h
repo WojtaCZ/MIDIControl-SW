@@ -10,7 +10,7 @@ pthread_t serialReceiverThread;
 
 int cmdBuffIndex, midiBuffIndex, msgNullCounter, recvMsgLen;
 unsigned char cmdBuffer[100];
-unsigned char midiBuffer[100];
+unsigned char midiBuffer[500];
 
 int serialInit(char port[], char baud[]);
 int serialConfig(int sercom, char port[], char baud[]);

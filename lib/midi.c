@@ -6,6 +6,7 @@
 #include <pthread.h>
 #include <time.h>
 #include <netinet/in.h>
+#include <math.h>
 
 //Zapne debug pro dekodovani/kodovani MIDI souboru
 #define MIDI_DEBUG
@@ -314,8 +315,9 @@ void *midiPlayParser(void * args){
 				break;
 			}
 
-			if(metaType == 51){
+			if(metaType == 81){
 				playfile.tempo = ((metaData[0] << 16) | (metaData[1] << 8) | metaData[2]);	
+				printf("DT: %lu  Meta type: %d  Tempo: %ld\n", deltaSum, metaType ,playfile.tempo );
 			}
 
 			unsigned char serbuff[] = {cmd, metaType, metaLenght};
@@ -355,10 +357,10 @@ int midiRec(char songname[]){
 	if(trackStatus == 1 || trackStatus == 3) return 0;
 
 	//Zakladni tempo je 120beats/minute
-	recfile.tempo = 500000; //us/1/4
-	recfile.division = 1000; //tick/1/4
+	recfile.tempo = 50000; //us/1/4
+	recfile.division = 10000; //tick/1/4
 
-	recfile.timeMultiplier = 1000;
+	recfile.timeMultiplier = 10000;
 
 	trackStatus = 0;
 
@@ -388,7 +390,7 @@ int midiRec(char songname[]){
 	printf("%x %x", (recfile.division & 0xff00)>>8, (recfile.division & 0x00ff));
 
 	//Vytvori se hlavicka MIDI souboru
-	unsigned char headerBuffer[] = {'M', 'T', 'h', 'd', 0, 0, 0, 6, 0, 0, 0, 1, (recfile.division & 0xff00) >> 8, (recfile.division & 0x00ff), 'M', 'T', 'r', 'k', 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0x51, 0x03, recfile.tempo & 0xff0000, recfile.tempo & 0x00ff00,recfile.tempo & 0x0000ff};
+	unsigned char headerBuffer[] = {'M', 'T', 'h', 'd', 0, 0, 0, 6, 0, 0, 0, 1, (recfile.division & 0xff00) >> 8, (recfile.division & 0x00ff), 'M', 'T', 'r', 'k', 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0x51, 0x03, (recfile.tempo & 0xff0000)>>16, (recfile.tempo & 0x00ff00)>>8,recfile.tempo & 0x0000ff};
 
 
 	for(int i = 0; i < sizeof(headerBuffer); i++){
@@ -397,17 +399,7 @@ int midiRec(char songname[]){
 	}
 
 
-	int rc;
-	pthread_attr_t attr;
-	struct sched_param param;
-
-	rc = pthread_attr_init(&attr);
-	rc = pthread_attr_getschedparam(&attr, &param);
-	param.sched_priority += 100;
-	rc = pthread_attr_setschedparam(&attr, &param);
-
-
-	int err = pthread_create(&recorderThread, &attr, &midiRecordParser, (void *)midifp);
+	int err = pthread_create(&recorderThread,/* &attr*/NULL, &midiRecordParser, (void *)midifp);
     if (err != 0) printf(ERROR "Nepodarilo se spustit vlakno nahravace! Chyba: %s\n", strerror(err));
 
 	//midiPlayParser(midifp);
@@ -435,7 +427,18 @@ void *midiRecordParser(void * args){
 	//Promenna pro kontrolu predchazejiciho prikazu
 	int prevNote = 0;
 	int noteChannel = 0;
+
+	//Flag pro variable lenght quantity
+	//-1 - neinicializovano
+	//0 - neni VLQ
+	//1 - VLQ probiha
+	//2 - VLQ hotovo
+	int vlqStat = -1;
 	
+	unsigned char metaType, sysexType;
+	unsigned long metaLen;
+
+
 	unsigned char uc;
 
 	unsigned char c[100];
@@ -443,10 +446,11 @@ void *midiRecordParser(void * args){
 	unsigned int reqBytes = 1, readBytes = 0;
 	long long int lenght = 0;
 
-	clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &time1);
+	clock_gettime(CLOCK_THREAD_CPUTIME_ID, &time1);
 
 	while(trackStatus == 3){
 
+		memset(c, 0, sizeof(c));
 		readBytes = serialMIDIRead(c, reqBytes);
 		//printf("Time: %f\n", time_spent);
 		//readBytes = read(sercom, c, reqBytes);
@@ -459,10 +463,11 @@ void *midiRecordParser(void * args){
 			if(cmd == 0){
 				cmd = c[0];
 				if(cmd != 0xfe){
-					clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &time2);
+					clock_gettime(CLOCK_THREAD_CPUTIME_ID, &time2);
+
 					double time = (double)timeDiff(time1, time2);
 					delta = round((double)timeDiff(time1, time2)/((double)recfile.tempo/(double)recfile.timeMultiplier));
-					clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &time1);
+					clock_gettime(CLOCK_THREAD_CPUTIME_ID, &time1);
 				}
 			}
 
@@ -678,45 +683,43 @@ void *midiRecordParser(void * args){
 
 
 			}else if((cmd & 0xff) == 0xFF){
-				/*if(cmd == 0) cmd = c;
-				int metaType = fgetc(fp);
 
-				unsigned long metaLenght = 0;
-				do{
-					c = fgetc(fp);
-					metaLenght |= (c & 0x7f) & 0xff;
-					if(c & 0x80) metaLenght <<= 7;
-				}while(c & 0x80);
-*/
-				/*unsigned char metaData[255];
-				memset(metaData, 0, sizeof(metaData));
-
-				fread(metaData, metaLenght, 1, fp);
-				#ifdef MIDI_DEBUG
-					if(metaType > 0 && metaType < 7){
-						printf("DT: %lu  Meta type: %d  Lenght: %lu Data: %s\n", deltaSum, metaType ,metaLenght, metaData);
+				if(vlqStat == -1){
+					reqBytes = 1;
+					vlqStat = 0;
+					metaType = 0;
+					metaLen = 0;
+				}else if(readBytes == reqBytes && vlqStat == 0){
+					
+					metaType = c[0];
+					reqBytes = 1;
+					vlqStat = 1;
+		
+				}else if(vlqStat == 1){
+					if(c[0] & 0x80){
+						metaLen |= (c[0] & 0x7f) & 0xff;
+						metaLen <<= 7;
 					}else{
-						printf("DT: %lu  Meta type: %d  Lenght: %lu\n", deltaSum, metaType ,metaLenght);
+						metaLen |= (c[0] & 0x7f) & 0xff;
+						vlqStat = 2;
+						reqBytes = metaLen;
 					}
-				#endif
 
-				// 47 je konec tracku, vyskoci ze smycky
-				if(metaType == 47){
-					trackStatus = 0;
-					break;
+				}else if(vlqStat == 2 && readBytes == reqBytes){
+
+					#ifdef MIDI_DEBUG
+						if(metaType > 0 && metaType < 7){
+							printf("DT: %lu  Meta type: %d  Lenght: %lu Data: %s\n", delta, metaType ,metaLen, c);
+						}else{
+							printf("DT: %lu  Meta type: %d  Lenght: %lu\n", delta, metaType ,metaLen);
+						}
+					#endif
+
+					cmd = 0;
+					reqBytes = 1;
+					prevNote = 0;
+					vlqStat = -1;
 				}
-
-				if(metaType == 81){
-					playfile.tempo = ((metaData[0] << 16) | (metaData[1] << 8) | metaData[2]);	
-				}
-
-				unsigned char serbuff[] = {cmd, metaType, metaLenght};*/
-				//write(sercom, serbuff, 3);
-				//write(sercom, metaData, metaLenght);
-
-				cmd = 0;
-				reqBytes = 1;
-				prevNote = 0;
 			}else if((cmd & 0xff) == 0xfe){
 				reqBytes = 1;
 				cmd = 0;
@@ -744,6 +747,8 @@ void *midiRecordParser(void * args){
 
 	fseek(fp,18 ,SEEK_SET);
 
+	//Pricte se prvni meta tag
+	recfile.trackSize += 7;
 	//Do hlavicky se doda delka
 	unsigned char headerBuffer[] = {(recfile.trackSize & 0xff000000)>>24, (recfile.trackSize & 0xff0000)>>16, (recfile.trackSize & 0xff00)>>8, (recfile.trackSize & 0xff)};
 
