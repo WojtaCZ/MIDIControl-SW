@@ -1,0 +1,2 @@
+yum groupinstall "Development Tools" "Development Libraries"
+yum install libreadline-dev
