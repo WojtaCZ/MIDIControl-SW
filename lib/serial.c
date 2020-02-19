@@ -212,7 +212,7 @@ int serialCMDAvailable(){
 
 void *serialReceiver(){
 
-	unsigned char recBytes[200];
+	unsigned char recBytes[1000];
 	int serReadBytes = 0, bytesAvailable = 0;
 
 	//msgNullCounter = 0;
@@ -248,8 +248,10 @@ void *serialReceiver(){
 	            	int len = (recBytes[ptr+4]<<8) | recBytes[ptr+5];
 	            	memcpy(cmdBuffer, recBytes+ptr, len+6);
 	            	memmove(recBytes+ptr, recBytes+ptr+len+6, sizeof(recBytes));
-	            	memcpy(midiBuffer+midiBuffIndex, recBytes, serReadBytes-(len+6));
-	            	if(trackStatus == 3) midiBuffIndex += serReadBytes-(len+6);
+	            	if(trackStatus == 3){
+	            		memcpy(midiBuffer+midiBuffIndex, recBytes, serReadBytes-(len+6));
+	            		midiBuffIndex += serReadBytes-(len+6);
+	            	}
 	            	cmdBuffIndex += len+6;
 	        	}else if(trackStatus == 3){
 	        		memcpy(midiBuffer+midiBuffIndex, recBytes, serReadBytes);
@@ -266,8 +268,10 @@ void *serialReceiver(){
 	    	sem_post(&cmdBuffLock);
 
 	    	/*for(int i = 0; i < serReadBytes; i++){
-	    		printf("%02x\n", recBytes[i]);
-	    	}*/
+	    		printf("%02x", recBytes[i]);
+	    	}
+
+	    	printf("\n");*/
 	    }
 
 	    serReadBytes = 0;
@@ -362,6 +366,6 @@ void *serialReceiver(){
 			}
 		}*/
 
-		usleep(10);
+		//usleep(1);
 	}
 }

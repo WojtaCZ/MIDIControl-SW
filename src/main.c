@@ -13,7 +13,6 @@
 #include "../lib/communication.h"
 
 int fileCount;
-char * line;
 //char *files[500];
 
 int main(int argc, char const *argv[]){
@@ -60,7 +59,7 @@ int main(int argc, char const *argv[]){
 		}
 
 		if(!strcmp(cmd, "record")){
-				midiRec(name);
+			midiRec(name);
 		}
 
 		if(!strcmp(cmd, "pause")){

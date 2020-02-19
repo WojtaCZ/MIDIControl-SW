@@ -7,6 +7,7 @@
 #define ERROR "\e[41m ERROR \e[0m  "
 #define ISSUE "\e[43m ISSUE \e[0m  "
 #define OK "\e[42m OK \e[0m     "
+#define CMD "\e[44m CMD \e[0m    "
 
 //Pole s konfiguracnimy parametry
 char parameters[255][255];

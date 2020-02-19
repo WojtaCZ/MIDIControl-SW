@@ -34,6 +34,7 @@ int midiPlay(char songname[]){
 	strcpy(dir, parameters[2]);
 	strcat(dir, "/");
 	strcat(dir, songname);
+	strcat(dir, ".mid");
 	midifp = fopen(dir, "rb");
 
 	if(midifp == NULL){
@@ -109,12 +110,14 @@ int midiPlay(char songname[]){
 
 
 	int err = pthread_create(&playerThread, NULL, &midiPlayParser, (void *)midifp);
-    if (err != 0) printf(ERROR "Nepodarilo se spustit vlakno prehravace! Chyba: %s\n", strerror(err));
+    if (err != 0){
+    	printf(ERROR "Nepodarilo se spustit vlakno prehravace! Chyba: %s\n", strerror(err));
+    	return 0;
+    } 
 
    	trackStatus = 1;
-	//midiPlayParser(midifp);
-
-	return 0;
+   	
+	return 1;
 
 
 }
@@ -400,13 +403,16 @@ int midiRec(char songname[]){
 
 
 	int err = pthread_create(&recorderThread,/* &attr*/NULL, &midiRecordParser, (void *)midifp);
-    if (err != 0) printf(ERROR "Nepodarilo se spustit vlakno nahravace! Chyba: %s\n", strerror(err));
+    if (err != 0){
+    	printf(ERROR "Nepodarilo se spustit vlakno nahravace! Chyba: %s\n", strerror(err));
+    	return 0;
+    }
 
 	//midiPlayParser(midifp);
 
 
 
-	return 0;
+	return 1;
 
 
 }
@@ -441,7 +447,7 @@ void *midiRecordParser(void * args){
 
 	unsigned char uc;
 
-	unsigned char c[100];
+	unsigned char c[500];
 	unsigned char cmd = 0;
 	unsigned int reqBytes = 1, readBytes = 0;
 	long long int lenght = 0;
