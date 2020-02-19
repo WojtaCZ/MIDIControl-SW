@@ -54,5 +54,7 @@ void *msgDecoder(){
 			printf("\n");
 			
 		}
+
+		usleep(1000);
 	}
 }
