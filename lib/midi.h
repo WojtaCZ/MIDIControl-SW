@@ -13,7 +13,7 @@
 int trackStatus;
 
 int midiPlay(char songname[]);
-void midiStop();
+int midiStop();
 int midiRec(char songname[]);
 void *midiPlayParser(void * args);
 void *midiRecordParser(void * args);

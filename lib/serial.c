@@ -38,8 +38,6 @@ int serialInit(char port[], char baud[]){
         return 0; 
     } 
 
-
-
 	int rc;
 	pthread_attr_t attr;
 	struct sched_param param;
@@ -203,6 +201,15 @@ int serialCMDRead(void * buf){
 	return 0;
 }
 
+int serialCMDFlush(){
+	sem_wait(&cmdBuffLock);
+	memset(cmdBuffer, 0, sizeof(cmdBuffer));
+	cmdBuffIndex = 0;
+	sem_post(&cmdBuffLock);
+	
+	return ;
+}
+
 int serialCMDAvailable(){
 	sem_wait(&cmdBuffLock);
 	int len = cmdBuffIndex;
@@ -219,13 +226,21 @@ void *serialReceiver(){
 
 
 	sem_wait(&cmdBuffLock);
+	memset(cmdBuffer, 0, sizeof(cmdBuffer));
 	cmdBuffIndex = 0;
 	//recvMsgLen = 0;
 	sem_post(&cmdBuffLock);
 	sem_wait(&midiBuffLock);
+	memset(midiBuffer, 0, sizeof(midiBuffer));
 	midiBuffIndex = 0;
 	sem_post(&midiBuffLock);
 
+	memset(recBytes, 0, sizeof(recBytes));
+
+    sleep(1);
+    sem_wait(&sercomLock);
+  	tcflush(sercom,TCIOFLUSH);
+  	sem_post(&sercomLock);
 
 	while(1){
 

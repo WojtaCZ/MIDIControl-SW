@@ -7,6 +7,7 @@
 #include <time.h>
 #include <netinet/in.h>
 #include <math.h>
+#include "communication.h"
 
 //Zapne debug pro dekodovani/kodovani MIDI souboru
 #define MIDI_DEBUG
@@ -19,6 +20,11 @@ pthread_t recorderThread;
 struct midifile playfile, recfile;
 
 int midiPlay(char songname[]){
+
+	if(!aliveMain){
+		printf(ERROR "S hlavni jednotkou neni navazano spojeni!\n");
+		return 0;
+	}
 
 	//Kontrola zda uz se neprehrava/nenahrava
 	if(trackStatus == 1 || trackStatus == 3) return 0;
@@ -108,6 +114,11 @@ int midiPlay(char songname[]){
 		printf("File format: %d  Track Count: %d  Time division: %d Time multiplier: %ld Track size: %lu\n",playfile.format, playfile.tracks, playfile.division, playfile.timeMultiplier, playfile.trackSize);
 	#endif
 
+	char msg[50];
+	msg[0] = 0x00;
+	msg[1] = 0x01;
+	memcpy(&msg[2], songname, strlen(songname));
+	sendMsg(ADDRESS_PC, ADDRESS_MAIN, 1, INTERNAL, msg, strlen(songname)+3);
 
 	int err = pthread_create(&playerThread, NULL, &midiPlayParser, (void *)midifp);
     if (err != 0){
@@ -122,7 +133,13 @@ int midiPlay(char songname[]){
 
 }
 
-void midiStop(){
+int midiStop(){
+
+	if(!aliveMain){
+		printf(ERROR "S hlavni jednotkou neni navazano spojeni!\n");
+		return 0;
+	}
+
 	//Pokud se udela stop pri prehravani
 	if(trackStatus == 1){
 		//Killne se prehravani
@@ -141,6 +158,8 @@ void midiStop(){
 	}
 
 	trackStatus = 0;
+
+	return 1;
 
 
 }
@@ -355,6 +374,12 @@ void *midiPlayParser(void * args){
 
 
 int midiRec(char songname[]){
+
+	if(!aliveMain){
+		printf(ERROR "S hlavni jednotkou neni navazano spojeni!\n");
+		return 0;
+	}
+
 
 	//Kontrola zda uz se neprehrava/nenahrava
 	if(trackStatus == 1 || trackStatus == 3) return 0;

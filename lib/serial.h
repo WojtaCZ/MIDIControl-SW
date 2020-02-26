@@ -18,5 +18,6 @@ void *serialReceiver();
 int serialMIDIRead(void * buf, size_t count);
 int serialCMDRead(void * buf);
 int serialCMDAvailable();
+int serialCMDFlush();
 
 #endif

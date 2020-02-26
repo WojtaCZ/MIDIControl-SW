@@ -1,22 +1,29 @@
 #include "communication.h"
 #include "serial.h"
+#include "midi.h"
 #include "utils.h"
 #include <stdio.h>
 #include <stdlib.h>
 
+//#define SERIAL_DEBUG
 
 pthread_t devAliveThread, msgDecoderThread;
 
 int devComInit(){
 
+	aliveRemote = 0;
+	aliveRemoteCounter = 0;
+	aliveMain = 0;
+	aliveMainCounter = 0;
+
 	//Spusti se signalizace "keepalive" komunikace
-	/*int err = pthread_create(&devAliveThread, NULL, &devAliveWorker, NULL);
+	int err = pthread_create(&devAliveThread, NULL, &devAliveWorker, NULL);
     if(err != 0){
     	printf(ERROR "Nepodarilo se spustit vlakno komunikace se zarizenim! Chyba: %s\n", strerror(err));
     	return 0;
-    }*/
+    }
 
-    int err = pthread_create(&msgDecoderThread, NULL, &msgDecoder, NULL);
+    err = pthread_create(&msgDecoderThread, NULL, &msgDecoder, NULL);
     if(err != 0){
     	printf(ERROR "Nepodarilo se spustit vlakno pro dekodovani zprav! Chyba: %s\n", strerror(err));
     	return 0;
@@ -28,12 +35,25 @@ int devComInit(){
 
 void *devAliveWorker(){
 
-	char buff[] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x27, 0x00, 0xAB};
+	char buff[] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x26, 0x00, 0xAB};
 	
 	while(1){
 		sem_wait(&sercomLock);
 		write(sercom, buff, sizeof(buff));
 		sem_post(&sercomLock);
+
+		aliveRemoteCounter++;
+		aliveMainCounter++;
+
+		if(aliveRemoteCounter >= 2){
+			aliveRemote = 0;
+			aliveRemoteCounter = 0;
+		}
+
+		if(aliveMainCounter >= 2){
+			aliveMain = 0;
+			aliveMainCounter = 0;
+		}
 
 		sleep(1);
 	}
@@ -45,6 +65,7 @@ void *msgDecoder(){
 		if(serialCMDAvailable() > 0){
 			
 			char buff[200];
+			memset(buff, 0, sizeof(buff));
 			int len = serialCMDAvailable();
 			int i = serialCMDRead(buff);
 
@@ -87,29 +108,33 @@ void *msgDecoder(){
 				cilS = "Jine";
 			}
 			
-			if(dest == ADDRESS || broadcast){
-				printf("\n"CMD "Typ: %s Zdroj: %s Cil: %s Delka: %d Data: ", typS, zdrojS, cilS, len-6);
+			if(dest == ADDRESS_PC || (broadcast && src != ADDRESS_PC)){
 
-				for(int i = 6; i < len; i++){
-					printf("%x", buff[i]);
-				}
+				#ifdef SERIAL_DEBUG
+					printf("\n"CMD "Typ: %s Zdroj: %s Cil: %s Delka: %d Data: ", typS, zdrojS, cilS, len-6);
 
-				printf("\n");
+					for(int i = 6; i < len; i++){
+						printf("%x", buff[i]);
+					}
+
+					printf("\n");
+
+				#endif
 
 				decode(buff, len);
-			}
+			}else serialCMDFlush();
 			
 		}
 
-		usleep(1000);
+		usleep(100000);
 	}
 }
 
-void decode(char * msg, int len){
+void decode(unsigned char * msg, int len){
 	//Internal
-	char msgType = msg[6];
+	//char msgType = msg[6];
 
-	if((msgType & 0xE0) == 0x20){	
+	/*if((msgType & 0xE0) == 0x20){	
 		if(msg[7] == INTERNAL_COM){
 			if(msg[8] == INTERNAL_COM_PLAY){
 				printf("\n"CMD "Prehraj %s.mid\n", (msg+9));
@@ -135,7 +160,56 @@ void decode(char * msg, int len){
 		}
 	}else{
 
-	}
+	}*/
+
+	char msgType = msg[6];
+
+	uint8_t src = ((msg[6] & 0x18) >> 3);
+	uint8_t type = ((msgType & 0xE0) >> 5);
+
+	if(type == INTERNAL){
+		if(msg[7] == INTERNAL_COM){
+			if(msg[8] == INTERNAL_COM_PLAY){
+				#ifdef SERIAL_DEBUG
+					printf("\n"CMD "Prehraj %s.mid\n", (msg+9));
+				#endif
+				if(midiPlay(msg+9)){
+					msgAOK(0, msgType, len, 0, NULL);
+				}else msgERR(0, msgType, len);
+			}else if(msg[8] == INTERNAL_COM_STOP){
+				#ifdef SERIAL_DEBUG
+					printf("\n"CMD "Stop\n");
+				#endif
+				if(midiStop()){
+					msgAOK(0, msgType, len, 0, NULL);
+				}else msgERR(0, msgType, len);
+			}else if(msg[8] == INTERNAL_COM_REC){
+				#ifdef SERIAL_DEBUG
+					printf("\n"CMD "Nahraj %s.mid\n", (msg+9));
+				#endif
+				if(midiRec(msg+9)){
+					msgAOK(0, msgType, len, 0, NULL);
+				}else msgERR(0, msgType, len);
+			}else if(msg[8] == INTERNAL_COM_KEEPALIVE){
+				#ifdef SERIAL_DEBUG
+					printf("\n"CMD "Alive\n");
+				#endif
+				if(src == ADDRESS_CONTROLLER){
+					aliveRemote = 1;
+					aliveRemoteCounter = 0;
+				}else if(src == ADDRESS_MAIN){
+					aliveMain = 1;
+					aliveMainCounter = 0;
+				}
+			}else msgERR(0, msgType, len);
+		}else if(msg[7] == INTERNAL_CURR){
+			msgERR(0, msgType, len);
+		}else if(msg[7] == INTERNAL_DISP){
+			msgERR(0, msgType, len);
+		}else msgERR(0, msgType, len);
+	}else if(type == EXTERNAL_DISP){
+		msgERR(0, msgType, len);
+	}else msgERR(0, msgType, len);
 }
 
 void msgAOK(int aokType, int recType, int recSize, int dataSize, char * msg){
@@ -146,7 +220,7 @@ void msgAOK(int aokType, int recType, int recSize, int dataSize, char * msg){
 	buffer[2] = (recSize-6 & 0xff00) >> 8;
 	buffer[3] = recSize-6 & 0xff;
 	memcpy(&buffer[4], msg, dataSize);
-	sendMsg(ADDRESS, ((recType & 0x18) >> 3), 0, 0x07, buffer, dataSize+4);
+	sendMsg(ADDRESS_PC, ((recType & 0x18) >> 3), 0, 0x07, buffer, dataSize+4);
 	free(buffer);
 }
 
@@ -158,7 +232,7 @@ void msgERR(int errType, int recType, int recSize){
 	buffer[2] = (recSize-6 & 0xff00) >> 8;
 	buffer[3] = recSize-6 & 0xff;
 
-	sendMsg(ADDRESS, ((recType & 0x18) >> 3), 0, 0x07, buffer, 5);
+	sendMsg(ADDRESS_PC, ((recType & 0x18) >> 3), 0, 0x07, buffer, 5);
 	free(buffer);
 }
 
