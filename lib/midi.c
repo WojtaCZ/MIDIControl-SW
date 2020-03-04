@@ -114,17 +114,18 @@ int midiPlay(char songname[]){
 		printf("File format: %d  Track Count: %d  Time division: %d Time multiplier: %ld Track size: %lu\n",playfile.format, playfile.tracks, playfile.division, playfile.timeMultiplier, playfile.trackSize);
 	#endif
 
-	char msg[50];
-	msg[0] = 0x00;
-	msg[1] = 0x01;
-	memcpy(&msg[2], songname, strlen(songname));
-	sendMsg(ADDRESS_PC, ADDRESS_MAIN, 1, INTERNAL, msg, strlen(songname)+3);
-
 	int err = pthread_create(&playerThread, NULL, &midiPlayParser, (void *)midifp);
     if (err != 0){
     	printf(ERROR "Nepodarilo se spustit vlakno prehravace! Chyba: %s\n", strerror(err));
     	return 0;
     } 
+
+    char msg[50];
+	msg[0] = 0x00;
+	msg[1] = 0x01;
+	memcpy(&msg[2], songname, strlen(songname));
+	sendMsg(ADDRESS_PC, ADDRESS_OTHER, 1, INTERNAL, msg, strlen(songname)+3);
+
 
    	trackStatus = 1;
    	
@@ -142,6 +143,11 @@ int midiStop(){
 
 	//Pokud se udela stop pri prehravani
 	if(trackStatus == 1){
+		char msg[50];
+		msg[0] = 0x00;
+		msg[1] = 0x00;
+		sendMsg(ADDRESS_PC, ADDRESS_OTHER, 1, INTERNAL, msg, 3);
+
 		//Killne se prehravani
 		pthread_cancel(playerThread);
 		fclose(midifp);
@@ -155,6 +161,15 @@ int midiStop(){
 					sem_post(&sercomLock);
 				}
 		}
+	}else if(trackStatus == 3){
+		char msg[50];
+		msg[0] = 0x00;
+		msg[1] = 0x00;
+		sendMsg(ADDRESS_PC, ADDRESS_OTHER, 1, INTERNAL, msg, 3);
+
+		//Killne se prehravani
+		pthread_cancel(recorderThread);
+		fclose(midifp);
 	}
 
 	trackStatus = 0;
@@ -432,6 +447,13 @@ int midiRec(char songname[]){
     	printf(ERROR "Nepodarilo se spustit vlakno nahravace! Chyba: %s\n", strerror(err));
     	return 0;
     }
+
+
+	char msg[50];
+	msg[0] = 0x00;
+	msg[1] = 0x02;
+	memcpy(&msg[2], songname, strlen(songname));
+	sendMsg(ADDRESS_PC, ADDRESS_OTHER, 1, INTERNAL, msg, strlen(songname)+3);
 
 	//midiPlayParser(midifp);
 

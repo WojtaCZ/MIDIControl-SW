@@ -5,6 +5,7 @@
 #define ADDRESS_MAIN 0x02
 #define ADDRESS_PC 0x00
 #define ADDRESS_CONTROLLER 0x01
+#define ADDRESS_OTHER 0x03
 
 #define INTERNAL 0x01
 
