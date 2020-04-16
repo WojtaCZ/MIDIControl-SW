@@ -31,6 +31,9 @@ int main(int argc, char const *argv[]){
 
 	if(!devComInit()) return 0;
 
+	//Odesle se aktualni cas
+	sendTime();
+
 	while(1){
 
 		rl_attempted_completion_function = cmd_completition;
@@ -72,6 +75,20 @@ int main(int argc, char const *argv[]){
 
 		if(!strcmp(cmd, "resume")){
 				trackStatus = 1;
+		}
+
+		if(!strcmp(cmd, "ls")){
+			/*char *fil[500];
+			int count;
+			getDirContents(parameters[2], fil, &count);
+
+			for(int i = 0; i < count; i++){
+				printf("%s\n", fil[i]);
+			}*/
+
+			char * songs = (char*)malloc(500);
+			getSongsStr(songs);
+			printf("%s", songs);
 		}
 
 		if(!strcmp(cmd, "exit")){

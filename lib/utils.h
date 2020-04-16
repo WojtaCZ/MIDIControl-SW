@@ -18,5 +18,6 @@ char parameters[255][255];
 int getConfig();
 int getDirContents(char * directory, char *(*filearray)[500], int * count);
 long timeDiff(struct timespec start, struct timespec end);
+int getSongsStr(char * str);
 
 #endif

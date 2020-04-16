@@ -1,2 +1,4 @@
 libreadline-dev
 yum groupinstall "Development Tools" "Development Libraries"
+
+midish

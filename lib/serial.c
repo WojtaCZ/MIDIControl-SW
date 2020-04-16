@@ -183,7 +183,7 @@ int serialMIDIRead(void * buf, size_t count){
 
 	
 	//return midiBuffIndex;
-	return -1;
+	return 0;
 
 }
 
@@ -209,6 +209,17 @@ int serialCMDFlush(){
 	
 	return ;
 }
+
+
+int serialMIDIFlush(){
+	sem_wait(&midiBuffLock);
+	memset(midiBuffer, 0, sizeof(midiBuffer));
+	midiBuffIndex = 0;
+	sem_post(&midiBuffLock);
+	
+	return ;
+}
+
 
 int serialCMDAvailable(){
 	sem_wait(&cmdBuffLock);
@@ -282,105 +293,14 @@ void *serialReceiver(){
 
 	    	sem_post(&cmdBuffLock);
 
-	    	/*for(int i = 0; i < serReadBytes; i++){
-	    		printf("%02x", recBytes[i]);
-	    	}
-
-	    	printf("\n");*/
 	    }
 
 	    serReadBytes = 0;
 
 	    sem_post(&sercomLock);
 	    sem_post(&midiBuffLock);
-		/*//Pokud prijal byte
-		if(serReadBytes == serReqBytes){
-
-			sem_wait(&sercomLock);
-			ioctl(sercom, FIONREAD, &bytesAvailable);
-			sem_post(&sercomLock);
-
-			//Pokud se prijal null
-			if((msgNullCounter < 3 && recBytes[0] == 0) && bytesAvailable > 6){
-				//Pricte se counter nullů
-				msgNullCounter++;
-				//Byte se zapise
-				sem_wait(&cmdBuffLock);
-				cmdBuffer[cmdBuffIndex++] = recBytes[0];
-				sem_post(&cmdBuffLock);
-
-				serReqBytes = 1;
-
-			}else if(msgNullCounter == 3 && recBytes[0] == 0){
-				//Nacte se dalsi byte (velikost zpravy)
-				//cmdBuffer[cmdBuffIndex++] = recBytes[0];
-				//Pricte se counter nullů
-				msgNullCounter++;
-				//Byte se zapise
-				sem_wait(&cmdBuffLock);
-				cmdBuffer[cmdBuffIndex++] = recBytes[0];
-				sem_post(&cmdBuffLock);
-
-				serReqBytes = 2;
-
-			}else if(msgNullCounter == 4 && serReadBytes == 2){
-				//Nacte se dalsi byte (velikost zpravy)
-				sem_wait(&cmdBuffLock);
-				cmdBuffer[cmdBuffIndex++] = recBytes[0];
-				cmdBuffer[cmdBuffIndex++] = recBytes[1];
-				msgLen = ((recBytes[0] << 8) | recBytes[1]);
-				sem_post(&cmdBuffLock);
-				serReqBytes = ((recBytes[0] << 8) | recBytes[1]);
-
-			}else if(msgNullCounter == 4 && serReadBytes == msgLen){
-				//Nacte se dalsi byte (velikost zpravy)
-				sem_wait(&cmdBuffLock);
-				memcpy(&cmdBuffer[cmdBuffIndex], recBytes, serReadBytes);
-
-				recvMsgLen = msgLen;
-
-				msgLen = 0;
-				cmdBuffIndex = 0;
-
-				sem_post(&cmdBuffLock);
-
-				serReqBytes = 1;
-				msgNullCounter = 0;
-			}else if(trackStatus == 3){
-				//Pokud jsem predtim prijimal ale nakonec to nebyla zprava
-				if(msgNullCounter != 0){
-					//Prekopiruji se data do midi bufferu
-					sem_wait(&midiBuffLock);
-					for(int i = 0; i < msgNullCounter; i++){
-						midiBuffer[midiBuffIndex+i] = cmdBuffer[i];
-					}
-
-					//Zvysi se index bufferu
-					midiBuffIndex += msgNullCounter;
-					sem_post(&midiBuffLock);
-					msgNullCounter = 0;
-					sem_wait(&cmdBuffLock);
-					cmdBuffIndex = 0;
-					sem_post(&cmdBuffLock);
-					serReqBytes = 1;
-				}else{
-					//Jinak se normalne zapise byte do bufferu
-					sem_wait(&midiBuffLock);
-					midiBuffer[midiBuffIndex++] = recBytes[0];
-					printf("B: %x\n", recBytes[0]);
-					sem_post(&midiBuffLock);
-					sem_wait(&cmdBuffLock);
-					cmdBuffIndex = 0;
-					sem_post(&cmdBuffLock);
-					serReqBytes = 1;
-				}
 
 
-				
-				
-			}
-		}*/
-
-		//usleep(1);
+		usleep(1000);
 	}
 }

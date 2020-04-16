@@ -10,7 +10,7 @@
 #include "communication.h"
 
 //Zapne debug pro dekodovani/kodovani MIDI souboru
-#define MIDI_DEBUG
+//#define MIDI_DEBUG
 
 //Pointer na midi soubor
 FILE *midifp;
@@ -114,18 +114,22 @@ int midiPlay(char songname[]){
 		printf("File format: %d  Track Count: %d  Time division: %d Time multiplier: %ld Track size: %lu\n",playfile.format, playfile.tracks, playfile.division, playfile.timeMultiplier, playfile.trackSize);
 	#endif
 
+	usleep(100000);
+
+ 	char msg[strlen(songname)+7];
+    msg[0] = INTERNAL_COM;
+    msg[1] = INTERNAL_COM_PLAY;
+	sprintf(&msg[2], "%s.mid", songname);
+	printf("%s", songname);
+	sendMsg(ADDRESS_PC, ADDRESS_OTHER, 1, INTERNAL, msg, strlen(songname)+6);
+
+	usleep(100000);
+
 	int err = pthread_create(&playerThread, NULL, &midiPlayParser, (void *)midifp);
     if (err != 0){
     	printf(ERROR "Nepodarilo se spustit vlakno prehravace! Chyba: %s\n", strerror(err));
     	return 0;
     } 
-
-    char msg[50];
-	msg[0] = 0x00;
-	msg[1] = 0x01;
-	memcpy(&msg[2], songname, strlen(songname));
-	sendMsg(ADDRESS_PC, ADDRESS_OTHER, 1, INTERNAL, msg, strlen(songname)+3);
-
 
    	trackStatus = 1;
    	
@@ -143,10 +147,8 @@ int midiStop(){
 
 	//Pokud se udela stop pri prehravani
 	if(trackStatus == 1){
-		char msg[50];
-		msg[0] = 0x00;
-		msg[1] = 0x00;
-		sendMsg(ADDRESS_PC, ADDRESS_OTHER, 1, INTERNAL, msg, 3);
+		char msg[] = {INTERNAL_COM, INTERNAL_COM_STOP};
+		sendMsg(ADDRESS_PC, ADDRESS_OTHER, 1, INTERNAL, msg, 2);
 
 		//Killne se prehravani
 		pthread_cancel(playerThread);
@@ -162,10 +164,8 @@ int midiStop(){
 				}
 		}
 	}else if(trackStatus == 3){
-		char msg[50];
-		msg[0] = 0x00;
-		msg[1] = 0x00;
-		sendMsg(ADDRESS_PC, ADDRESS_OTHER, 1, INTERNAL, msg, 3);
+		char msg[] = {INTERNAL_COM, INTERNAL_COM_STOP};
+		sendMsg(ADDRESS_PC, ADDRESS_OTHER, 1, INTERNAL, msg, 2);
 
 		//Killne se prehravani
 		pthread_cancel(recorderThread);
@@ -382,7 +382,6 @@ void *midiPlayParser(void * args){
 
 	}
 
-	fclose(fp);
 	trackStatus = 0;
 	return NULL;
 }
@@ -442,21 +441,22 @@ int midiRec(char songname[]){
 	}
 
 
+	usleep(100000);
+
+ 	char msg[strlen(songname)+7];
+    msg[0] = INTERNAL_COM;
+    msg[1] = INTERNAL_COM_REC;
+	sprintf(&msg[2], "%s.mid", songname);
+	printf("%s", songname);
+	sendMsg(ADDRESS_PC, ADDRESS_OTHER, 1, INTERNAL, msg, strlen(songname)+6);
+
+	usleep(100000);
+
 	int err = pthread_create(&recorderThread,/* &attr*/NULL, &midiRecordParser, (void *)midifp);
     if (err != 0){
     	printf(ERROR "Nepodarilo se spustit vlakno nahravace! Chyba: %s\n", strerror(err));
     	return 0;
     }
-
-
-	char msg[50];
-	msg[0] = 0x00;
-	msg[1] = 0x02;
-	memcpy(&msg[2], songname, strlen(songname));
-	sendMsg(ADDRESS_PC, ADDRESS_OTHER, 1, INTERNAL, msg, strlen(songname)+3);
-
-	//midiPlayParser(midifp);
-
 
 
 	return 1;
@@ -467,7 +467,7 @@ int midiRec(char songname[]){
 
 void *midiRecordParser(void * args){
 
-	FILE *fp = args;
+	FILE *fp = midifp;
 
 	struct timespec time1, time2;
 	char byte[10];
@@ -499,18 +499,28 @@ void *midiRecordParser(void * args){
 	unsigned int reqBytes = 1, readBytes = 0;
 	long long int lenght = 0;
 
+	serialMIDIFlush();
+
 	clock_gettime(CLOCK_THREAD_CPUTIME_ID, &time1);
 
 	while(trackStatus == 3){
 
-		memset(c, 0, sizeof(c));
+		memset(c, 0, 500);
 		readBytes = serialMIDIRead(c, reqBytes);
+
+		
 		//printf("Time: %f\n", time_spent);
 		//readBytes = read(sercom, c, reqBytes);
 
 		
 
 		if(readBytes == reqBytes){
+
+			for(int i = 0; i < reqBytes; i++){
+	    	printf("%02x", c[i]);
+	  	  }
+
+	   	 printf("\n");
 			//printf("XXX RB: %d REB: %d\n", readBytes, reqBytes);
 
 			if(cmd == 0){
@@ -530,30 +540,54 @@ void *midiRecordParser(void * args){
 
 				if(readBytes == reqBytes){
 					noteChannel = (cmd & 0x0f)+1;
-					unsigned char note = c[0];
-					unsigned char velocity = c[1];
-					
-					#ifdef MIDI_DEBUG
-						printf("DT: %lu Channel: %d Note: %d  Velocity: %d\n", delta, noteChannel, note, velocity);
-					#endif
-					
-					int len = 0;
-					deltaTicks = toVLQ(delta, &len);
+					unsigned char velocity;
+					unsigned char note;
 
-					fwrite(&deltaTicks, len, 1, fp);
-					recfile.trackSize += (len + 3);
-
-					//Vytvori se hlavicka MIDI souboru
-					unsigned char fileBuff[] = {cmd, note, velocity};
-
-					for(int i = 0; i < sizeof(fileBuff); i++){
-						//Header se vlozi do souboru
-						fprintf(fp, "%c", fileBuff[i]);
+					if(prevNote != 0){
+						 velocity = c[0];
+						 note = prevNote;
+					}else{
+						note = c[0];
+						velocity = c[1];
 					}
+					
+					if((note & 0xf0) != 0x80 || (note & 0xf0) != 0x90){
 
-					prevNote = 1;
-					cmd = 0;
-					reqBytes = 1;
+						if((velocity & 0xf0) == 0x80 || (velocity & 0xf0) == 0x90){
+							velocity = 0x00;
+						}
+						
+						#ifdef MIDI_DEBUG
+							printf("DT: %lu Channel: %d Note: %d  Velocity: %d\n", delta, noteChannel, note, velocity);
+						#endif
+						
+						int len = 0;
+						deltaTicks = toVLQ(delta, &len);
+
+						fwrite(&deltaTicks, len, 1, fp);
+						recfile.trackSize += (len + 3);
+
+						//Vytvori se hlavicka MIDI souboru
+						unsigned char fileBuff[] = {cmd, note, velocity};
+
+						for(int i = 0; i < sizeof(fileBuff); i++){
+							//Header se vlozi do souboru
+							fprintf(fp, "%c", fileBuff[i]);
+						}
+
+						prevNote = 0;
+
+						if((c[1] & 0xf0) == 0x80 || (c[1] & 0xf0) == 0x90){
+							cmd = c[1];
+						}else cmd = 0;
+						
+						reqBytes = 1;
+
+					}else{
+						cmd = c[0];
+						reqBytes = 1;
+						prevNote = c[1];
+					}
 
 				}
 
@@ -730,10 +764,6 @@ void *midiRecordParser(void * args){
 				cmd = 0;
 				reqBytes = 1;
 				prevNote = 0;
-				//unsigned char serbuff[] = {cmd, sysexLenght};
-				//write(sercom, serbuff, 3);
-				//write(sercom, sysexData, sysexLenght);
-
 
 			}else if((cmd & 0xff) == 0xFF){
 
@@ -780,16 +810,11 @@ void *midiRecordParser(void * args){
 				#ifdef MIDI_DEBUG
 					printf("Active sensing\n");
 				#endif
-
-			}else if(prevNote){
-				//unsigned char note = c;
-				//unsigned char velocity = fgetc(fp);
-				#ifdef MIDI_DEBUG
-					//printf("DT: %lu Channel: %d Note: %d  Velocity: %d\n", deltaSum, noteChannel, note, velocity);
-				#endif
-				//prevNote = 1;
-				//unsigned char serbuff[] = {cmd, note, velocity};
-				//write(sercom, serbuff, 3);
+			}else{
+				//Pokud tenhle byte k nicemu nesedi
+				cmd = 0;
+				reqBytes = 1;
+				prevNote = 0;
 			}
 
 		
@@ -810,7 +835,6 @@ void *midiRecordParser(void * args){
 		fprintf(fp, "%c", headerBuffer[i]);
 	}
 
-	fclose(fp);
 	trackStatus = 0;
 	return NULL;
 }

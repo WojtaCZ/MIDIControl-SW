@@ -4,6 +4,23 @@
 #include <string.h>
 #include <dirent.h>
 #include <math.h>
+#include "communication.h"
+
+int getSongsStr(char * str){
+	char *files[500];
+	int count;
+	getDirContents(parameters[2], &files, &count);
+
+	strcpy(str, files[0]);
+	strcat(str, "\n");
+
+	for(int i = 1; i < count; i++){
+		strcat(str, files[i]);
+		strcat(str, "\n");
+	}
+
+	return 1;
+}
 
 int getConfig(){
 	//Promenne funkce
@@ -65,16 +82,14 @@ int getConfig(){
 
 int getDirContents(char * directory, char *(*filearray)[500], int * count){
 	DIR *d;
-	int i = 2;
+	int i = 0;
 	struct dirent *dir;
 	d = opendir(directory);
-	(*filearray)[0] = ".";
-	(*filearray)[1] = "..";
 	if(d){
     	while((dir = readdir(d)) != NULL){
-    		if(strcmp(dir->d_name, ".") != 0 || strcmp(dir->d_name, "..") != 0){
-    		 (*filearray)[i] = dir->d_name;
-    		 i++;
+    		if(strcmp(dir->d_name, ".") != 0 && strcmp(dir->d_name, "..") != 0){
+    			(*filearray)[i] = dir->d_name;
+    			i++;
     		}
    		}
 		closedir(d);
@@ -88,4 +103,11 @@ int getDirContents(char * directory, char *(*filearray)[500], int * count){
 long timeDiff(struct timespec start, struct timespec end){
  	long diff = round((double)((end.tv_sec - start.tv_sec) * (long)1e9 + (end.tv_nsec - start.tv_nsec))/(double)1e3);   
     return diff;
+}
+
+void sendTime(){
+	time_t t = time(NULL);
+  	struct tm tm = *localtime(&t);
+  	char msg[8] = {INTERNAL_COM, INTERNAL_COM_SET_TIME, tm.tm_sec, tm.tm_min, tm.tm_hour, tm.tm_mday, tm.tm_mon+1, tm.tm_year-100};
+  	sendMsg(ADDRESS_PC, ADDRESS_OTHER, 1, INTERNAL, msg, 8);
 }
