@@ -32,6 +32,7 @@ int main(int argc, char const *argv[]){
 	if(!devComInit()) return 0;
 
 	//Odesle se aktualni cas
+	sleep(2);
 	sendTime();
 
 	while(1){

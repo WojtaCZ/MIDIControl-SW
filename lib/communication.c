@@ -7,8 +7,8 @@
 #include <unistd.h>
 
 #define SERIAL_DEBUG
-//#define SERIAL_DEBUG_RAW
-#define NOT_DEBUG_KEEPALIVE
+#define SERIAL_DEBUG_RAW
+//#define NOT_DEBUG_KEEPALIVE
 
 pthread_t devAliveThread, msgDecoderThread;
 
@@ -44,8 +44,6 @@ void *devAliveWorker(){
 
 		sendMsg(ADDRESS_PC, ADDRESS_OTHER, 1, INTERNAL, msg, 2);
 
-
-		aliveMain = 1;
 		aliveRemoteCounter++;
 		aliveMainCounter++;
 
@@ -59,7 +57,7 @@ void *devAliveWorker(){
 			aliveMainCounter = 0;
 		}
 
-		sleep(1);
+		sleep(2);
 	}
 }
 
@@ -68,10 +66,12 @@ void *msgDecoder(){
 		
 		if(serialCMDAvailable() > 0){
 			
-			char buff[200];
+			unsigned char buff[200];
 			memset(buff, 0, sizeof(buff));
 			int len = serialCMDAvailable();
 			int i = serialCMDRead(buff);
+
+			serialCMDFlush();
 
 			char * typS = (char*)malloc(30);
 			char * zdrojS = (char*)malloc(30);
@@ -118,7 +118,7 @@ void *msgDecoder(){
 					printf("\n"CMD "Typ: %s Zdroj: %s Cil: %s Delka: %d Data: ", typS, zdrojS, cilS, len-6);
 
 					for(int i = 6; i < len; i++){
-						printf("%x", buff[i]);
+						printf("%02x", buff[i]);
 					}
 
 					printf("\n");

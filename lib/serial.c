@@ -11,6 +11,8 @@
 #include <sched.h>
 #include <pthread.h>
 
+#define DEBUG_ALL_INCOMING
+
 int serialInit(char port[], char baud[]){
 	sercom = open(port, O_RDWR | O_NOCTTY | O_NDELAY);
 	if(sercom < 1){
@@ -264,6 +266,16 @@ void *serialReceiver(){
 
 		if(serReadBytes > 0){
 
+			#ifdef DEBUG_ALL_INCOMING
+				printf("Received %d bytes:\n", serReadBytes);
+
+				for(int i = 0; i < serReadBytes; i++){
+					printf("%02x", recBytes[i]);
+				}
+
+				printf("\n");
+			#endif
+
 			sem_wait(&cmdBuffLock);
 
 			unsigned long ptr = memchr(recBytes, '\0', sizeof(recBytes));
@@ -301,6 +313,6 @@ void *serialReceiver(){
 	    sem_post(&midiBuffLock);
 
 
-		usleep(1000);
+		usleep(1); //Bylo 1000
 	}
 }

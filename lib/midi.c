@@ -383,6 +383,7 @@ void *midiPlayParser(void * args){
 	}
 
 	trackStatus = 0;
+	fclose(fp);
 	return NULL;
 }
 
@@ -836,6 +837,7 @@ void *midiRecordParser(void * args){
 	}
 
 	trackStatus = 0;
+	fclose(fp);
 	return NULL;
 }
 
