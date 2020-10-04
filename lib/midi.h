@@ -15,19 +15,5 @@ int trackStatus;
 int midiPlay(char songname[]);
 int midiStop();
 int midiRec(char songname[]);
-void *midiPlayParser(void * args);
-void *midiRecordParser(void * args);
-unsigned long long int toVLQ(unsigned long long int dt, int *bytes);
-
-struct midifile{
-	uint16_t format;
-	uint16_t tracks;
-	uint16_t division;
-	uint32_t tempo;
-	uint8_t deltaType;
-	//Zavysle na deltaType (bud v ticich na ctvrtinovou notu nebo v ticich na sekundu)
-	uint32_t timeMultiplier;
-	unsigned long trackSize;
-};
 
 #endif

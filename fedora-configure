@@ -1,2 +1,4 @@
 yum groupinstall "Development Tools" "Development Libraries"
 yum install libreadline-devel
+sudo echo 'SUBSYSTEM="tty", ATTRS{idVendor}=="0483", ATTRS{idProduct}=="5740", SYMLINK+="MIDIControl"' | sudo tee --append /etc/udev/rules.d/10-local.rules
+sudo udevadm trigger

@@ -27,7 +27,10 @@ int main(int argc, char const *argv[]){
 	
 	//getDirContents("/home/vojtech/Dokumenty/MIDI_soubory", &files, &fileCount);
 
+
 	if(!serialInit(parameters[0], parameters[1])) return 0;
+
+	if(!midiInit()) return 0;
 
 	if(!devComInit()) return 0;
 

@@ -29,12 +29,6 @@ int serialInit(char port[], char baud[]){
         return 0; 
     } 
 
-    if(sem_init(&midiBuffLock, 0, 1) != 0) { 
-        printf(ERROR "Nepodarilo se inicializovat mutex MIDI bufferu.");
-        return 0; 
-    } 
-
-
 	if(sem_init(&cmdBuffLock, 0, 1) != 0) { 
         printf(ERROR "Nepodarilo se inicializovat mutex DATA bufferu.");
         return 0; 
@@ -172,23 +166,6 @@ int serialConfig(int sercom, char port[], char baud[]){
 	return 1;
 }
 
-int serialMIDIRead(void * buf, size_t count){
-
-	if(midiBuffIndex >= count){
-		sem_wait(&midiBuffLock);
-		memcpy(buf, midiBuffer, count);
-		memmove(midiBuffer, midiBuffer+count, sizeof(midiBuffer));
-		midiBuffIndex -= count;
-		sem_post(&midiBuffLock);
-		return count;
-	}
-
-	
-	//return midiBuffIndex;
-	return 0;
-
-}
-
 int serialCMDRead(void * buf){
 	//printf("READ: %d\n", count);
 	if(cmdBuffIndex > 0){
@@ -212,17 +189,6 @@ int serialCMDFlush(){
 	return ;
 }
 
-
-int serialMIDIFlush(){
-	sem_wait(&midiBuffLock);
-	memset(midiBuffer, 0, sizeof(midiBuffer));
-	midiBuffIndex = 0;
-	sem_post(&midiBuffLock);
-	
-	return ;
-}
-
-
 int serialCMDAvailable(){
 	sem_wait(&cmdBuffLock);
 	int len = cmdBuffIndex;
@@ -232,21 +198,13 @@ int serialCMDAvailable(){
 
 void *serialReceiver(){
 
-	unsigned char recBytes[1000];
+	unsigned char recBytes[100000];
 	int serReadBytes = 0, bytesAvailable = 0;
-
-	//msgNullCounter = 0;
-
 
 	sem_wait(&cmdBuffLock);
 	memset(cmdBuffer, 0, sizeof(cmdBuffer));
 	cmdBuffIndex = 0;
-	//recvMsgLen = 0;
 	sem_post(&cmdBuffLock);
-	sem_wait(&midiBuffLock);
-	memset(midiBuffer, 0, sizeof(midiBuffer));
-	midiBuffIndex = 0;
-	sem_post(&midiBuffLock);
 
 	memset(recBytes, 0, sizeof(recBytes));
 
@@ -258,7 +216,6 @@ void *serialReceiver(){
 	while(1){
 
 		sem_wait(&sercomLock);
-		sem_wait(&midiBuffLock);
 
 		ioctl(sercom, FIONREAD, &bytesAvailable);
 
@@ -291,17 +248,9 @@ void *serialReceiver(){
 	            		midiBuffIndex += serReadBytes-(len+6);
 	            	}
 	            	cmdBuffIndex += len+6;
-	        	}else if(trackStatus == 3){
-	        		memcpy(midiBuffer+midiBuffIndex, recBytes, serReadBytes);
-	    			midiBuffIndex += serReadBytes;
-	    			//printf("DATA NULL\n");
 	        	}
 	        
-	    	}else if(trackStatus == 3){
-	        	memcpy(midiBuffer+midiBuffIndex, recBytes, serReadBytes);
-	    		midiBuffIndex += serReadBytes;
-	    		//printf("DATA\n");
-	        }
+	    	}
 
 	    	sem_post(&cmdBuffLock);
 
@@ -310,8 +259,6 @@ void *serialReceiver(){
 	    serReadBytes = 0;
 
 	    sem_post(&sercomLock);
-	    sem_post(&midiBuffLock);
-
 
 		usleep(1); //Bylo 1000
 	}

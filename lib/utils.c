@@ -52,7 +52,7 @@ int getConfig(){
 					paramCount++;
 
 					//Roztridi parametry do prislusnych bunek ( bohuzel Ccko neumi indexovat stringem :( )
-					if(!strcmp("SERCOM", name)){
+					if(!strcmp("IDENT", name)){
 						strcpy(parameters[0], value);
 					}else if(!strcmp("SERBAUD", name)){
 						strcpy(parameters[1], value);
@@ -98,11 +98,6 @@ int getDirContents(char * directory, char *(*filearray)[500], int * count){
 	*count = i;
 
 	return(0);
-}
-
-long timeDiff(struct timespec start, struct timespec end){
- 	long diff = round((double)((end.tv_sec - start.tv_sec) * (long)1e9 + (end.tv_nsec - start.tv_nsec))/(double)1e3);   
-    return diff;
 }
 
 void sendTime(){

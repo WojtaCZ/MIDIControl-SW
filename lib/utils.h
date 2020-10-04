@@ -12,12 +12,11 @@
 //Pole s konfiguracnimy parametry
 char parameters[255][255];
 //Indexy
-// 0 = SERCOM - Seriovy port komunikace
+// 0 = IDENT - VID:PID pro identifikaci
 // 1 = SERBAUD - Rychlost komunikace
 //Ziskani konfigurace ze souboru
 int getConfig();
 int getDirContents(char * directory, char *(*filearray)[500], int * count);
-long timeDiff(struct timespec start, struct timespec end);
 int getSongsStr(char * str);
 
 #endif
