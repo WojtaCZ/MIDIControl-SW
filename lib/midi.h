@@ -23,5 +23,6 @@ int activePID;
 int midiPlay(char songname[]);
 int midiStop();
 int midiRec(char songname[]);
+int midiInit();
 
 #endif
