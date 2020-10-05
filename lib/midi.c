@@ -63,7 +63,9 @@ int midiPlay(char songname[]){
 	sprintf(buff, "aplaymidi -p %s %s &", midiport, dir);
 
 	//Spusti se prikaz
-	midifp = popen(buff, "r");
+	system(buff);
+
+	/*midifp = popen(buff, "r");
 	if(midifp == NULL){
 		printf(ERROR "Nepodarilo se spustit prehravani. Vyzkousejte spustitelnost '%s'\n", buff);
 		return 0;
@@ -78,7 +80,7 @@ int midiPlay(char songname[]){
 		return 0;
 	}
 
-	pclose(midifp);
+	pclose(midifp);*/
 
 	usleep(100000);
 
@@ -104,23 +106,7 @@ int midiStop(){
 		return 0;
 	}
 
-	char buff[100];
-
-	sprintf(buff, "kill %d", activePID);
-	//Spusti se prikaz
-	midifp = popen(buff, "r");
-
-	if(midifp == NULL){
-		printf(ERROR "Nepodarilo se spustit STOP. Vyzkousejte spustitelnost '%s'\n", buff);
-		return 0;
-	}
-
-	fgets(buff, sizeof(buff), midifp);
-
-	if(strlen(buff) <= 0){
-		printf(ERROR "Nepodarilo se spustit STOP. Vyzkousejte spustitelnost '%s'\n", buff);
-		return 0;
-	}
+	system("killall aplaymidi arecordmidi");
 
 	//Pokud se udela stop pri prehravani
 	if(trackStatus == 1){
@@ -170,7 +156,8 @@ int midiRec(char songname[]){
 	sprintf(buff, "arecordmidi -p %s %s &", midiport, dir);
 
 	//Spusti se prikaz
-	midifp = popen(buff, "r");
+	system(buff);
+	/*midifp = popen(buff, "r");
 	if(midifp == NULL){
 		printf(ERROR "Nepodarilo se spustit nahravani. Vyzkousejte spustitelnost '%s'\n", buff);
 		return 0;
@@ -185,7 +172,7 @@ int midiRec(char songname[]){
 		return 0;
 	}
 
-	pclose(midifp);
+	pclose(midifp);*/
 
 	usleep(100000);
 
