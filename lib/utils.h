@@ -13,7 +13,7 @@
 //Pole s konfiguracnimy parametry
 char parameters[255][255];
 //Indexy
-// 0 = IDENT - VID:PID pro identifikaci
+// 0 = SERCOM - Seriovy port
 // 1 = SERBAUD - Rychlost komunikace
 //Ziskani konfigurace ze souboru
 int getConfig();

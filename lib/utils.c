@@ -52,7 +52,7 @@ int getConfig(){
 					paramCount++;
 
 					//Roztridi parametry do prislusnych bunek ( bohuzel Ccko neumi indexovat stringem :( )
-					if(!strcmp("IDENT", name)){
+					if(!strcmp("SERCOM", name)){
 						strcpy(parameters[0], value);
 					}else if(!strcmp("SERBAUD", name)){
 						strcpy(parameters[1], value);
