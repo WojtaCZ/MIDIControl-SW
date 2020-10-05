@@ -4,6 +4,7 @@
 
 name = midicontrol
 src = $(wildcard lib/*) #bylo *.c
+rmobj = $(wildcard lib/*.o)
 obj = $(src:.c=.o)
 
 CC=gcc
@@ -14,4 +15,4 @@ $(name): src/main.c $(obj)
 
 .PHONY: clean
 clean:
-		rm -f $(obj) $(name)
+		rm -f $(rmobj)
