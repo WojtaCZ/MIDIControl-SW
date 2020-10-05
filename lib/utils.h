@@ -2,6 +2,7 @@
 #define UTILS_H
 
 #include <time.h>
+#include "defines.h"
 
 //Barva pro stavova hlaseni
 #define ERROR "\e[41m ERROR \e[0m  "

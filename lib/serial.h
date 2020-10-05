@@ -2,6 +2,7 @@
 #define SERIAL_H
 
 #include <semaphore.h>
+#include "defines.h"
 
 int sercom;
 sem_t sercomLock, cmdBuffLock;

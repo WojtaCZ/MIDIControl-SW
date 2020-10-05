@@ -11,8 +11,6 @@
 #include <sched.h>
 #include <pthread.h>
 
-#define DEBUG_ALL_INCOMING
-
 int serialInit(char port[], char baud[]){
 	sercom = open(port, O_RDWR | O_NOCTTY | O_NDELAY);
 	if(sercom < 1){
@@ -223,7 +221,7 @@ void *serialReceiver(){
 
 		if(serReadBytes > 0){
 
-			#ifdef DEBUG_ALL_INCOMING
+			#ifdef SERIAL_DEBUG_RAW
 				printf("Received %d bytes:\n", serReadBytes);
 
 				for(int i = 0; i < serReadBytes; i++){
@@ -243,10 +241,6 @@ void *serialReceiver(){
 	            	int len = (recBytes[ptr+4]<<8) | recBytes[ptr+5];
 	            	memcpy(cmdBuffer, recBytes+ptr, len+6);
 	            	memmove(recBytes+ptr, recBytes+ptr+len+6, sizeof(recBytes));
-	            	if(trackStatus == 3){
-	            		memcpy(midiBuffer+midiBuffIndex, recBytes, serReadBytes-(len+6));
-	            		midiBuffIndex += serReadBytes-(len+6);
-	            	}
 	            	cmdBuffIndex += len+6;
 	        	}
 	        

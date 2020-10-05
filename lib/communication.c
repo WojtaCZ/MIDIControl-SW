@@ -6,10 +6,6 @@
 #include <stdlib.h>
 #include <unistd.h>
 
-#define SERIAL_DEBUG
-#define SERIAL_DEBUG_RAW
-//#define NOT_DEBUG_KEEPALIVE
-
 pthread_t devAliveThread, msgDecoderThread;
 
 int devComInit(){
@@ -114,7 +110,7 @@ void *msgDecoder(){
 			
 			if(dest == ADDRESS_PC || (broadcast && src != ADDRESS_PC)){
 
-				#ifdef SERIAL_DEBUG_RAW
+				#ifdef MESSAGES_DEBUG_RAW
 					printf("\n"CMD "Typ: %s Zdroj: %s Cil: %s Delka: %d Data: ", typS, zdrojS, cilS, len-6);
 
 					for(int i = 6; i < len; i++){
@@ -143,7 +139,7 @@ void decode(unsigned char * msg, int len){
 	if(type == INTERNAL){
 		if(msg[7] == INTERNAL_COM){
 			if(msg[8] == INTERNAL_COM_PLAY){
-				#ifdef SERIAL_DEBUG
+				#ifdef MESSAGES_DEBUG
 					printf("\n"CMD "Prehraj %s\n", (msg+9));
 				#endif
 					char msgShortened[30];
@@ -153,21 +149,21 @@ void decode(unsigned char * msg, int len){
 					msgAOK(0, msgType, len, 0, NULL);
 				}else msgERR(0, msgType, len);
 			}else if(msg[8] == INTERNAL_COM_STOP){
-				#ifdef SERIAL_DEBUG
+				#ifdef MESSAGES_DEBUG
 					printf("\n"CMD "Stop\n");
 				#endif
 				if(midiStop()){
 					msgAOK(0, msgType, len, 0, NULL);
 				}else msgERR(0, msgType, len);
 			}else if(msg[8] == INTERNAL_COM_REC){
-				#ifdef SERIAL_DEBUG
+				#ifdef MESSAGES_DEBUG
 					printf("\n"CMD "Nahraj %s.mid\n", (msg+9));
 				#endif
 				if(midiRec(msg+9)){
 					msgAOK(0, msgType, len, 0, NULL);
 				}else msgERR(0, msgType, len);
 			}else if(msg[8] == INTERNAL_COM_GET_SONGS){
-				#ifdef SERIAL_DEBUG
+				#ifdef MESSAGES_DEBUG
 					printf("\n"CMD "Vracim jmena dostupnych pisni.\n");
 				#endif
 				char * songs = (char*)malloc(490);
@@ -175,8 +171,8 @@ void decode(unsigned char * msg, int len){
 					msgAOK(0, msgType, len, strlen(songs), songs);
 				}else msgERR(0, msgType, len);
 			}else if(msg[8] == INTERNAL_COM_KEEPALIVE){
-				#ifdef SERIAL_DEBUG
-					#ifndef NOT_DEBUG_KEEPALIVE
+				#ifdef MESSAGES_DEBUG
+					#ifndef MESSAGES_NOT_DEBUG_KEEPALIVE
 						printf("\n"CMD "Alive\n");
 					#endif
 				#endif
@@ -188,14 +184,14 @@ void decode(unsigned char * msg, int len){
 					aliveMainCounter = 0;
 				}
 			}else if(msg[8] == INTERNAL_COM_GET_TIME){
-				#ifdef SERIAL_DEBUG
+				#ifdef MESSAGES_DEBUG
 					printf("\n"CMD "Get time.\n");
 				#endif
 
 				sendTime();
 
 			}else if(msg[8] == INTERNAL_COM_CHECK_NAME){
-				#ifdef SERIAL_DEBUG
+				#ifdef MESSAGES_DEBUG
 					printf("\n"CMD "Check name %s.mid.\n", msg+9);
 				#endif
 

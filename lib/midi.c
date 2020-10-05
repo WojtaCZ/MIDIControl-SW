@@ -9,16 +9,33 @@
 #include <math.h>
 #include "communication.h"
 
-//Zapne debug pro dekodovani/kodovani MIDI souboru
-//#define MIDI_DEBUG
-
 int midiInit(){
-	char * buff = system("aplaymidi -l | grep MIDIControl");
-	int p1 = 0, p2 = 0;
-	sscanf("%d:%d", &p1, &p2);
-	printf("Port = %d:%d", p1, p2);
-	return 1;
 
+	activePID = 0;
+
+	//Spusti se prikaz
+	midifp = popen("aplaymidi -l | grep MIDIControl", "r");
+	if(midifp == NULL){
+		printf(ERROR "Nepodarilo se nacist MIDI porty. Vyzkousejte spustitelnost 'aplaymidi -l | grep MIDIControl'\n");
+		return 0;
+	}
+
+	char buff[100];
+	fgets(buff, sizeof(buff), midifp);
+
+	if(strlen(buff) <= 0){
+		printf(ERROR "Nepodarilo se nacist MIDI porty. Je zarizeni pripojene?\n");
+		return 0;
+	}
+
+	int p1 = 0, p2 = 0;
+
+	sscanf(buff, "%d:%d", &p1, &p2);
+	sprintf(midiport, "%d:%d", p1, p2);
+
+	pclose(midifp);
+
+	return 1;
 }
 
 int midiPlay(char songname[]){
@@ -35,22 +52,43 @@ int midiPlay(char songname[]){
 
 	char dir[255];
 
-	//Soubor se otevre
+	//Nacte se cesta k souboru
 	strcpy(dir, parameters[2]);
 	strcat(dir, "/");
 	strcat(dir, songname);
 	strcat(dir, ".mid");
 
- 	char msg[strlen(songname)+7];
+	char buff[255];
+
+	sprintf(buff, "aplaymidi -p %s %s &", midiport, dir);
+
+	//Spusti se prikaz
+	midifp = popen(buff, "r");
+	if(midifp == NULL){
+		printf(ERROR "Nepodarilo se spustit prehravani. Vyzkousejte spustitelnost '%s'\n", buff);
+		return 0;
+	}
+	
+	fgets(buff, sizeof(buff), midifp);
+
+	sscanf(buff, "[%*d] %d", &activePID);
+
+	if(strlen(buff) > 15 ||activePID == 0){
+		printf(ERROR "Chyba prehravani. Hlaska: %s\n", buff);
+		return 0;
+	}
+
+	pclose(midifp);
+
+	usleep(100000);
+
+	char msg[strlen(songname)+7];
     msg[0] = INTERNAL_COM;
     msg[1] = INTERNAL_COM_PLAY;
 	sprintf(&msg[2], "%s.mid", songname);
 	printf("%s", songname);
 	sendMsg(ADDRESS_PC, ADDRESS_OTHER, 1, INTERNAL, msg, strlen(songname)+6);
 
-	usleep(100000);
-
-	//system("");
 
    	trackStatus = 1;
    	
@@ -63,6 +101,24 @@ int midiStop(){
 
 	if(!aliveMain){
 		printf(ERROR "S hlavni jednotkou neni navazano spojeni!\n");
+		return 0;
+	}
+
+	char buff[100];
+
+	sprintf(buff, "kill %d", activePID);
+	//Spusti se prikaz
+	midifp = popen(buff, "r");
+
+	if(midifp == NULL){
+		printf(ERROR "Nepodarilo se spustit STOP. Vyzkousejte spustitelnost '%s'\n", buff);
+		return 0;
+	}
+
+	fgets(buff, sizeof(buff), midifp);
+
+	if(strlen(buff) <= 0){
+		printf(ERROR "Nepodarilo se spustit STOP. Vyzkousejte spustitelnost '%s'\n", buff);
 		return 0;
 	}
 
@@ -108,6 +164,30 @@ int midiRec(char songname[]){
 		printf(ERROR "Zadany soubor %s jiz existuje!\n", dir);
 		return 0;
 	}
+	
+	char buff[255];
+
+	sprintf(buff, "arecordmidi -p %s %s &", midiport, dir);
+
+	//Spusti se prikaz
+	midifp = popen(buff, "r");
+	if(midifp == NULL){
+		printf(ERROR "Nepodarilo se spustit nahravani. Vyzkousejte spustitelnost '%s'\n", buff);
+		return 0;
+	}
+	
+	fgets(buff, sizeof(buff), midifp);
+
+	sscanf(buff, "[%*d] %d", &activePID);
+
+	if(strlen(buff) > 15 ||activePID == 0){
+		printf(ERROR "Chyba nahravani. Hlaska: %s\n", buff);
+		return 0;
+	}
+
+	pclose(midifp);
+
+	usleep(100000);
 
  	char msg[strlen(songname)+7];
     msg[0] = INTERNAL_COM;
@@ -116,11 +196,8 @@ int midiRec(char songname[]){
 	printf("%s", songname);
 	sendMsg(ADDRESS_PC, ADDRESS_OTHER, 1, INTERNAL, msg, strlen(songname)+6);
 
-	usleep(100000);
-
-	
+	trackStatus = 3;
 
 	return 1;
-
 
 }

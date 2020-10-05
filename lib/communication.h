@@ -1,6 +1,8 @@
 #ifndef COM_H
 #define COM_H
 
+#include "defines.h"
+
 //Typy zprav
 #define ADDRESS_MAIN 				0x02
 #define ADDRESS_PC 					0x00

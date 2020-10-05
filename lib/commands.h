@@ -2,6 +2,7 @@
 #define CMD_H
 
 #include <stdio.h>
+#include "defines.h"
 
 typedef struct{
 	char* cmd;
